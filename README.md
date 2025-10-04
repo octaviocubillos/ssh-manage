@@ -18,7 +18,7 @@ Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar
 Puedes instalar `ssh-manager` con un simple comando. Se instalará en `/usr/local/bin` y estará disponible como `ssh-manage` y `sshm`.
 
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/main/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/main/install.sh) | sudo bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | sudo bash
 ```
 
 ## 💻 Uso

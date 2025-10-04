@@ -7,14 +7,14 @@
 #   Este script descarga la última versión de ssh-manager, la instala en
 #   /usr/local/bin y crea los alias `ssh-manage` y `sshm`.
 #
-#   Uso: curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/main/install.sh | sudo bash
+#   Uso: curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
 #
 # ==============================================================================
 
 set -e # Salir inmediatamente si un comando falla
 
 # --- VARIABLES ---
-REPO_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/main/ssh-manager.sh"
+REPO_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/ssh-manager.sh"
 INSTALL_DIR="/usr/local/bin"
 MAIN_CMD="ssh-manage"
 ALIAS_CMD="sshm"
