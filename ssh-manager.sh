@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v5.2.4
+#                 GESTOR DE CONEXIONES SSH v5.2.5
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
@@ -116,6 +116,33 @@ check_base_requirements() {
     fi
 }
 
+# --- CORRECCIÓN: Nueva función para verificar FUSE ---
+check_fuse_conf() {
+    local FUSE_CONF="/etc/fuse.conf"
+    # Solo se aplica en Linux estándar (no Termux, no macOS)
+    if [[ "$OSTYPE" == "linux-gnu"* ]] && [[ -z "${PREFIX}" ]]; then
+        if [ -f "$FUSE_CONF" ] && ! grep -q "^\s*user_allow_other" "$FUSE_CONF"; then
+            echo "La configuración de FUSE necesita un ajuste para permitir la exploración de archivos."
+            echo "Se intentará añadir 'user_allow_other' a $FUSE_CONF con sudo."
+            
+            if echo "user_allow_other" | sudo tee -a "$FUSE_CONF" > /dev/null; then
+                echo "Configuración de FUSE actualizada correctamente."
+            else
+                echo "------------------------------------------------------------------"
+                echo "Error: Falló la actualización automática de la configuración de FUSE."
+                echo "Para solucionarlo, ejecuta el siguiente comando manualmente:"
+                echo ""
+                echo "  echo 'user_allow_other' | sudo tee -a $FUSE_CONF"
+                echo ""
+                echo "O edita el archivo '$FUSE_CONF' y descomenta o añade la línea 'user_allow_other'."
+                echo "------------------------------------------------------------------"
+                return 1
+            fi
+        fi
+    fi
+    return 0
+}
+
 
 # --- FUNCIONES DE LA APLICACIÓN ---
 
@@ -182,15 +209,20 @@ edit_connection() {
 
 browse_sftp() {
     ensure_dependency "mc" || return 1; ensure_dependency "sshfs" || return 1
+    
+    # Verificar FUSE antes de continuar
+    check_fuse_conf || return 1
+
     if [[ "$OSTYPE" != "linux-gnu"* ]] && [[ ! -d "$HOME/.termux" ]]; then echo "Error: La exploración visual solo es compatible con Linux."; return 1; fi
     if [ -f /.dockerenv ] && [ ! -c /dev/fuse ]; then echo "Error en Docker: Reinicia con --cap-add SYS_ADMIN --device /dev/fuse"; return 1; fi
     if [ ! -f /.dockerenv ] && [[ -z "${PREFIX}" ]] && ! lsmod | grep -q "^fuse\s" 2>/dev/null; then if ! sudo modprobe fuse; then echo "Error: No se pudo cargar módulo 'fuse'."; return 1; fi; fi
+    
     local alias_to_browse=$1; if [ -z "$alias_to_browse" ]; then list_connections; read -p "Alias a explorar: " alias_to_browse; fi; if [ -z "$alias_to_browse" ]; then echo "Cancelado."; return 1; fi
     local connection_line; connection_line=$(grep -E "^${alias_to_browse}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias no encontrado."; return 1; fi
     IFS='|' read -r alias host user port key pass remote_dir _ <<< "$connection_line"
     local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
     local MOUNT_POINT; MOUNT_POINT=$(mktemp -d); trap 'fusermount -u "$MOUNT_POINT" 2>/dev/null; rmdir "$MOUNT_POINT" 2>/dev/null; echo "Conexión SFTP cerrada."; exit' INT TERM EXIT
-    echo "Montando en $MOUNT_POINT..."; local sshfs_opts="-p $port -o allow_other,default_permissions,StrictHostKeyChecking=no"; if [ -n "$key" ]; then sshfs_opts+=" -o IdentityFile=$key"; fi
+    echo "Montando en $MOUNT_POINT..."; local sshfs_opts="-p $port -o StrictHostKeyChecking=no"; if [ -n "$key" ]; then sshfs_opts+=" -o IdentityFile=$key"; fi
     local remote_path_to_mount; local mc_start_path; if [ -n "$remote_dir" ]; then remote_path_to_mount="/"; mc_start_path="$MOUNT_POINT/$(echo "$remote_dir" | sed 's#^/##')"; else remote_path_to_mount=""; mc_start_path="$MOUNT_POINT"; fi
     if [ -n "$decrypted_pass" ]; then ensure_dependency "sshpass" || return 1; if ! echo "$decrypted_pass" | sshfs "${user}@${host}:${remote_path_to_mount}" "$MOUNT_POINT" -o password_stdin $sshfs_opts; then echo "Error de montaje."; return 1; fi
     else if ! sshfs "${user}@${host}:${remote_path_to_mount}" "$MOUNT_POINT" $sshfs_opts; then echo "Error de montaje."; return 1; fi; fi
