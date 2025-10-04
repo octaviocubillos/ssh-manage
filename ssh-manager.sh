@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v5.2.1
+#                 GESTOR DE CONEXIONES SSH v5.2.2
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
@@ -55,6 +55,10 @@ ensure_dependency() {
         printf "Instalando '$package_name'...  "; show_spinner &
         local spinner_pid=$!; eval "$install_cmd" > /dev/null 2>&1
         kill $spinner_pid &>/dev/null; wait $spinner_pid 2>/dev/null; printf "\b\bListo.\n"
+        
+        # CORREGIDO: Refresca el cache de comandos del shell
+        hash -r
+        
         if ! command -v "$dep" &> /dev/null; then echo "Error: La instalación de '$package_name' falló."; return 1; fi
     fi
     return 0
@@ -83,6 +87,7 @@ check_base_requirements() {
             printf "Instalando '$ncurses_pkg'...\n"
             if eval "$install_cmd"; then
                 echo "Instalación de '$ncurses_pkg' completada."
+                hash -r
             else
                 echo "Error: La instalación de '$ncurses_pkg' falló. Por favor, instálala manualmente."
             fi
