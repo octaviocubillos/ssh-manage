@@ -25,7 +25,7 @@ main() {
     local INSTALL_DIR
 
     # Detección del entorno (Termux o estándar)
-    if [[ -d "$HOME/.termux" ]]; then
+    if [[ -n "$PREFIX" ]]; then
         echo "Detectado entorno Termux."
         INSTALL_DIR="$PREFIX/bin"
     else

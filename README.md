@@ -8,7 +8,7 @@ Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar
 - **Atajos Inteligentes**: Conéctate a tus servidores usando un alias corto (ej: `sshm mi-servidor`).
 - **Seguridad Opcional**: Guarda contraseñas en texto plano o encriptadas con una palabra clave usando OpenSSL.
 - **Comandos Remotos**: Ejecuta comandos directamente en el servidor después de conectar (ej: `sshm mi-servidor top`).
-- **Explorador de Archivos Visual**: Navega por los archivos de tu servidor con una interfaz visual SFTP gracias a la integración con `sshfs` y `Midnight Commander`.
+- **Explorador de Archivos Visual**: Navega por los archivos de tu servidor con una interfaz visual SFTP gracias a la integración con `sshfs` y `Midnight Commander`. (No disponible en Termux).
 - **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita en una amplia gama de distribuciones (Debian, Fedora, Arch, CentOS, Alpine, macOS, Termux y más).
 - **Portátil**: Funciona en la mayoría de los sistemas operativos tipo Unix.
 
@@ -18,12 +18,12 @@ Elige el comando adecuado para tu sistema:
 
 **Linux / macOS**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | bash
 ```
 
 ## 🗑️ Desinstalación
@@ -32,12 +32,12 @@ Para desinstalar, simplemente ejecuta el siguiente comando:
 
 **Linux / macOS**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | sudo bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | bash
 ```
 
 
@@ -71,7 +71,7 @@ sshm list -a
 # Conectar a un servidor usando su alias (atajo)
 sshm mi-servidor
 
-# Conectar y ejecutar un comando
+# Conectar y ejecutar un comando (anula el comando por defecto)
 sshm mi-servidor "tail -f /var/log/syslog"
 
 # Abrir el explorador de archivos visual en un servidor
@@ -94,7 +94,7 @@ El archivo de configuración se crea automáticamente en `~/.config/ssh-manager/
 El formato es un archivo de texto simple donde cada línea es una conexión y los campos están separados por `|`:
 
 ```
-alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|
+alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|comando_defecto|
 
 
 ```

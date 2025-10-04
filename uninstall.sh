@@ -22,15 +22,27 @@ ALIAS_CMD="sshm"
 main() {
     local INSTALL_DIR
     local original_user="${SUDO_USER:-$USER}"
-    local config_dir="$HOME/.config/ssh-manager"
+    local user_home
+    local pointer_file
+    local config_dir
 
-    # Si se ejecuta con sudo, el home puede ser el de root
+    # Obtener el directorio home del usuario original de forma segura
     if [ "$original_user" != "root" ] && [ -n "$SUDO_USER" ]; then
-        config_dir="/home/$original_user/.config/ssh-manager"
+        user_home=$(eval echo "~$original_user")
+    else
+        user_home="$HOME"
+    fi
+
+    pointer_file="$user_home/.sshm_config_path"
+
+    if [ -f "$pointer_file" ]; then
+        config_dir=$(cat "$pointer_file")
+    else
+        config_dir="$user_home/.config/ssh-manager"
     fi
     
     # Detección del entorno
-    if [[ -d "$HOME/.termux" ]]; then
+    if [[ -n "$PREFIX" ]]; then
         INSTALL_DIR="$PREFIX/bin"
     else
         INSTALL_DIR="/usr/local/bin"
@@ -63,6 +75,11 @@ main() {
             * )
                 echo "Se conservará el directorio de configuración.";;
         esac
+    fi
+    
+    if [ -f "$pointer_file" ]; then
+        echo "Eliminando archivo de ruta de configuración..."
+        rm -f "$pointer_file"
     fi
 
     echo ""
