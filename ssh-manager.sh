@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v6.0
+#                 GESTOR DE CONEXIONES SSH v6.0.1
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
@@ -39,19 +39,27 @@ show_spinner() {
 }
 
 ensure_dependency() {
-    local dep=$1; local package_name=${2:-$1}; local was_installed=true
+    local dep=$1; local package_name=${2:-$1};
     if [ "$dep" == "openssl" ] && $IS_TERMUX; then dep="openssl-tool"; fi
     if ! command -v "$dep" &> /dev/null; then
-        was_installed=false
         echo "La herramienta '$dep' es necesaria y no está instalada."
-        local install_cmd=""; if $IS_TERMUX; then install_cmd="pkg install -y $package_name"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"; elif command -v dnf &> /dev/null; then install_cmd="sudo dnf install -y $package_name"; elif command -v yum &> /dev/null; then if [ "$dep" == "sshfs" ]; then package_name="fuse-sshfs"; fi; install_cmd="sudo yum install -y epel-release && sudo yum install -y $package_name"; elif command -v pacman &> /dev/null; then install_cmd="sudo pacman -Syu --noconfirm $package_name"; elif command -v zypper &> /dev/null; then install_cmd="sudo zypper --non-interactive install $package_name"; elif command -v apk &> /dev/null; then install_cmd="sudo apk add --no-cache $package_name"; elif command -v brew &> /dev/null; then install_cmd="brew install $package_name"; else echo "Error: Gestor de paquetes no compatible."; return 1; fi
+        local install_cmd="";
+        if $IS_TERMUX; then install_cmd="pkg install -y $package_name"
+        elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"
+        elif command -v dnf &> /dev/null; then install_cmd="sudo dnf install -y $package_name"
+        elif command -v yum &> /dev/null; then if [ "$dep" == "sshfs" ]; then package_name="fuse-sshfs"; fi; install_cmd="sudo yum install -y epel-release && sudo yum install -y $package_name"
+        elif command -v pacman &> /dev/null; then install_cmd="sudo pacman -Syu --noconfirm $package_name"
+        elif command -v zypper &> /dev/null; then install_cmd="sudo zypper --non-interactive install $package_name"
+        elif command -v apk &> /dev/null; then install_cmd="sudo apk add --no-cache $package_name"
+        elif command -v brew &> /dev/null; then install_cmd="brew install $package_name"; else echo "Error: Gestor de paquetes no compatible."; return 1; fi
         printf "Instalando '$package_name'...  "; show_spinner &
         local spinner_pid=$!; eval "$install_cmd" > /dev/null 2>&1
         kill $spinner_pid &>/dev/null; wait $spinner_pid 2>/dev/null; printf "\b\bListo.\n"
         hash -r
         if ! command -v "$dep" &> /dev/null; then echo "Error: La instalación de '$package_name' falló."; return 1; fi
+        # Registrar la dependencia instalada
+        echo "$package_name" >> "$DEPS_LOG"
     fi
-    if [ "$was_installed" == "false" ]; then echo "$package_name" >> "$DEPS_LOG"; fi
     return 0
 }
 
@@ -59,7 +67,14 @@ check_base_requirements() {
     if ! command -v "tput" &> /dev/null; then
         echo "La herramienta 'tput' (para la interfaz) no está instalada."
         local ncurses_pkg="ncurses-bin"; local install_cmd=""
-        if $IS_TERMUX; then ncurses_pkg="ncurses-utils"; install_cmd="pkg install -y $ncurses_pkg"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"; elif command -v dnf &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo dnf install -y $ncurses_pkg"; elif command -v yum &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo yum install -y $ncurses_pkg"; elif command -v pacman &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo pacman -Syu --noconfirm $ncurses_pkg"; elif command -v zypper &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo zypper --non-interactive install $ncurses_pkg"; elif command -v apk &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo apk add --no-cache $ncurses_pkg"; elif command -v brew &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="brew install $ncurses_pkg"; fi
+        if $IS_TERMUX; then ncurses_pkg="ncurses-utils"; install_cmd="pkg install -y $ncurses_pkg"
+        elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"
+        elif command -v dnf &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo dnf install -y $ncurses_pkg"
+        elif command -v yum &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo yum install -y $ncurses_pkg"
+        elif command -v pacman &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo pacman -Syu --noconfirm $ncurses_pkg"
+        elif command -v zypper &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo zypper --non-interactive install $ncurses_pkg"
+        elif command -v apk &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo apk add --no-cache $ncurses_pkg"
+        elif command -v brew &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="brew install $ncurses_pkg"; fi
         if [ -n "$install_cmd" ]; then printf "Instalando '$ncurses_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar '$ncurses_pkg'."; fi; else echo "Advertencia: no se pudo instalar 'tput'."; fi
     fi
     if ! command -v "ssh" &> /dev/null; then
@@ -100,7 +115,7 @@ is_alias_reserved() { local alias_to_check=$1; for cmd in "${RESERVED_COMMANDS[@
 
 list_connections() {
     local show_all=false; if [[ "$1" == "-a" || "$1" == "--all" ]]; then show_all=true; fi
-    echo "Conexiones guardadas:"; grep -vE '^\s*#|^\s*$' "$CONFIG_FILE" | while IFS='|' read -r alias host user port key pass remote_dir default_cmd _; do
+    echo "Conexiones guardadas:"; grep -vE '^\s*#|^\s*\$' "$CONFIG_FILE" | while IFS='|' read -r alias host user port key pass remote_dir default_cmd _; do
         if [ "$show_all" = true ]; then
             echo "-------------------------"; echo "alias: $alias"; echo "host: $host"; echo "user: $user"; echo "port: $port"; if [ -n "$key" ]; then echo "key: $key"; fi; if [ -n "$pass" ]; then if [[ "$pass" == enc:* ]]; then echo "pass: (encriptada)"; else echo "pass: $pass (texto plano)"; fi; fi; if [ -n "$remote_dir" ]; then echo "directory: $remote_dir"; fi; if [ -n "$default_cmd" ]; then echo "command: $default_cmd"; fi
         else
@@ -200,15 +215,62 @@ update_script() {
     fi
 }
 
-# ... (El resto de las funciones de red: scp, tunnel, etc. van aquí) ...
+run_scp() {
+    ensure_dependency "scp" "openssh-client" || return 1
+    local source=$1
+    local destination=$2
+    
+    if [ -z "$source" ] || [ -z "$destination" ]; then echo "Error: se requieren un origen y un destino."; show_usage; return 1; fi
+    
+    local alias_str=""
+    if [[ "$source" == *":"* ]]; then alias_str=$(echo "$source" | cut -d: -f1)
+    elif [[ "$destination" == *":"* ]]; then alias_str=$(echo "$destination" | cut -d: -f1)
+    else echo "Error: el origen o el destino debe tener el formato <alias>:/ruta"; show_usage; return 1; fi
+
+    local connection_line=$(grep -E "^${alias_str}\|" "$CONFIG_FILE")
+    if [ -z "$connection_line" ]; then echo "Error: Alias '$alias_str' no encontrado."; return 1; fi
+    IFS='|' read -r alias host user port key pass _ <<< "$connection_line"
+
+    local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
+    
+    local scp_command="scp -r -P $port"
+    if [ -n "$key" ]; then scp_command+=" -i $key"; fi
+
+    local final_source="$source"; local final_destination="$destination"
+    final_source=${final_source/$alias_str/$user@$host}
+    final_destination=${final_destination/$alias_str/$user@$host}
+    
+    echo "Copiando archivos...";
+    if [ -n "$decrypted_pass" ]; then
+        ensure_dependency "sshpass" || return 1
+        sshpass -p "$decrypted_pass" $scp_command "$final_source" "$final_destination"
+    else
+        $scp_command "$final_source" "$final_destination"
+    fi
+    echo "Copia completada."
+}
+
+run_tunnel() {
+    local alias_str=$1; local tunnel_spec=$2; local reverse=${3:-false}
+    if [ -z "$alias_str" ] || [ -z "$tunnel_spec" ]; then echo "Error: se requiere un alias y una especificación de túnel."; show_usage; return 1; fi
+    local connection_line=$(grep -E "^${alias_str}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias '$alias_str' no encontrado."; return 1; fi
+    IFS='|' read -r alias host user port key pass _ <<< "$connection_line"
+    local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
+    local tunnel_flag="-L"; local tunnel_type="local"; if [ "$reverse" = true ]; then tunnel_flag="-R"; tunnel_type="reverso"; fi
+    echo "Estableciendo túnel SSH $tunnel_type. Presiona Ctrl+C para cerrarlo."
+    local ssh_command="ssh -N $tunnel_flag $tunnel_spec -p $port"; if [ -n "$key" ]; then ssh_command+=" -i $key"; fi
+    if [ -n "$decrypted_pass" ]; then
+        ensure_dependency "sshpass" || return 1
+        sshpass -p "$decrypted_pass" $ssh_command "$user@$host"
+    else
+        $ssh_command "$user@$host"
+    fi
+}
 
 run_interactive_menu() {
     (
-        local remote_version
-        remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
-        if [ -n "$remote_version" ] && [ "$VERSION" != "$remote_version" ]; then
-            echo -e "\n\n\e[32mNueva versión ($remote_version) disponible. Ejecuta 'sshm update' para actualizar.\e[0m"
-        fi
+        local remote_version; remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
+        if [ -n "$remote_version" ] && [ "$VERSION" != "$remote_version" ]; then echo -e "\n\n\e[32mNueva versión ($remote_version) disponible. Ejecuta 'sshm update'.\e[0m"; fi
     ) &
 
     while true; do
@@ -222,6 +284,9 @@ run_interactive_menu() {
             d|D) delete_connection ;;
             u|U) update_script ;;
             h|H) show_usage ;;
+            s|S) read -p "Origen: " src; read -p "Destino: " dst; run_scp "$src" "$dst" ;;
+            t|T) read -p "Alias: " t_alias; read -p "Especificación (LPORT:RHOST:RPORT): " t_spec; run_tunnel "$t_alias" "$t_spec" ;;
+            rt|RT) read -p "Alias: " t_alias; read -p "Especificación (RPORT:LHOST:LPORT): " t_spec; run_tunnel "$t_alias" "$t_spec" true ;;
             q|Q) echo "¡Hasta luego!"; exit 0 ;;
             *) echo "Opción no válida.";;
         esac
@@ -232,7 +297,7 @@ run_interactive_menu() {
 check_base_requirements
 
 # Crear el directorio de configuración si no existe
-mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR" && touch "$DEPS_LOG"
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "# Formato: alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|comando_defecto|" > "$CONFIG_FILE"
@@ -241,7 +306,13 @@ fi
 if [ "$#" -gt 0 ]; then
     COMMAND=$1
     shift
-    case $COMMAND in -a) FULL_COMMAND="add" ;; -e) FULL_COMMAND="edit" ;; -l) FULL_COMMAND="list" ;; -c) FULL_COMMAND="connect" ;; -b) FULL_COMMAND="browse" ;; -d) FULL_COMMAND="delete" ;; -u) FULL_COMMAND="update" ;; -h) FULL_COMMAND="help" ;; add|edit|list|connect|browse|delete|update|help) FULL_COMMAND=$COMMAND ;; *) FULL_COMMAND="" ;; esac
+    case $COMMAND in -a) FULL_COMMAND="add" ;; -e) FULL_COMMAND="edit" ;; -l) FULL_COMMAND="list" ;; -c) FULL_COMMAND="connect" ;; -b) FULL_COMMAND="browse" ;; -d) FULL_COMMAND="delete" ;; -u) FULL_COMMAND="update" ;; -h) FULL_COMMAND="help" ;; -s) FULL_COMMAND="scp" ;; -t) FULL_COMMAND="tunnel" ;; -rt) FULL_COMMAND="reverse-tunnel" ;; *) FULL_COMMAND="" ;; esac
+
+    # Comandos que no son estándar en el case
+    if [[ " ${RESERVED_COMMANDS[*]} " =~ " ${COMMAND} " ]] && [ -z "$FULL_COMMAND" ]; then
+        FULL_COMMAND=$COMMAND
+    fi
+
     if [ -n "$FULL_COMMAND" ]; then
         case $FULL_COMMAND in 
             add) add_connection ;; 
@@ -252,6 +323,9 @@ if [ "$#" -gt 0 ]; then
             delete) delete_connection "$1" ;;
             update) update_script ;;
             help) show_usage ;;
+            scp) run_scp "$1" "$2" ;;
+            tunnel) run_tunnel "$1" "$2" ;;
+            "reverse-tunnel") run_tunnel "$1" "$2" true ;;
         esac
     else
         if grep -qE "^${COMMAND}\|" "$CONFIG_FILE"; then
@@ -265,3 +339,5 @@ if [ "$#" -gt 0 ]; then
 else
     run_interactive_menu
 fi
+
+
