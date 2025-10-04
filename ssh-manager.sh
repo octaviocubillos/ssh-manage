@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v5.3
+#                 GESTOR DE CONEXIONES SSH v6.0
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
@@ -11,6 +11,8 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
+VERSION="6.0"
+REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 # Detección de Termux
 IS_TERMUX=false
@@ -23,7 +25,8 @@ DEFAULT_CONFIG_DIR="$HOME/.config/ssh-manager"
 CONFIG_DIR=""
 if [ -f "$POINTER_FILE" ]; then CONFIG_DIR=$(cat "$POINTER_FILE"); else CONFIG_DIR="$DEFAULT_CONFIG_DIR"; fi
 CONFIG_FILE="$CONFIG_DIR/connections.txt"
-RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d")
+DEPS_LOG="$CONFIG_DIR/installed_deps.log"
+RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d" "update" "-u" "scp" "-s" "tunnel" "-t" "reverse-tunnel" "-rt" "help" "-h")
 
 
 # --- VERIFICACIÓN DE DEPENDENCIAS Y ANIMACIÓN ---
@@ -36,55 +39,36 @@ show_spinner() {
 }
 
 ensure_dependency() {
-    local dep=$1; local package_name=${2:-$1}
+    local dep=$1; local package_name=${2:-$1}; local was_installed=true
     if [ "$dep" == "openssl" ] && $IS_TERMUX; then dep="openssl-tool"; fi
     if ! command -v "$dep" &> /dev/null; then
+        was_installed=false
         echo "La herramienta '$dep' es necesaria y no está instalada."
-        local install_cmd=""
-        if $IS_TERMUX; then install_cmd="pkg install -y $package_name"
-        elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"
-        elif command -v dnf &> /dev/null; then install_cmd="sudo dnf install -y $package_name"
-        elif command -v yum &> /dev/null; then if [ "$dep" == "sshfs" ]; then package_name="fuse-sshfs"; fi; install_cmd="sudo yum install -y epel-release && sudo yum install -y $package_name"
-        elif command -v pacman &> /dev/null; then install_cmd="sudo pacman -Syu --noconfirm $package_name"
-        elif command -v zypper &> /dev/null; then install_cmd="sudo zypper --non-interactive install $package_name"
-        elif command -v apk &> /dev/null; then install_cmd="sudo apk add --no-cache $package_name"
-        elif command -v brew &> /dev/null; then install_cmd="brew install $package_name"; else echo "Error: Gestor de paquetes no compatible."; return 1; fi
+        local install_cmd=""; if $IS_TERMUX; then install_cmd="pkg install -y $package_name"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"; elif command -v dnf &> /dev/null; then install_cmd="sudo dnf install -y $package_name"; elif command -v yum &> /dev/null; then if [ "$dep" == "sshfs" ]; then package_name="fuse-sshfs"; fi; install_cmd="sudo yum install -y epel-release && sudo yum install -y $package_name"; elif command -v pacman &> /dev/null; then install_cmd="sudo pacman -Syu --noconfirm $package_name"; elif command -v zypper &> /dev/null; then install_cmd="sudo zypper --non-interactive install $package_name"; elif command -v apk &> /dev/null; then install_cmd="sudo apk add --no-cache $package_name"; elif command -v brew &> /dev/null; then install_cmd="brew install $package_name"; else echo "Error: Gestor de paquetes no compatible."; return 1; fi
         printf "Instalando '$package_name'...  "; show_spinner &
         local spinner_pid=$!; eval "$install_cmd" > /dev/null 2>&1
         kill $spinner_pid &>/dev/null; wait $spinner_pid 2>/dev/null; printf "\b\bListo.\n"
-        hash -r; if ! command -v "$dep" &> /dev/null; then echo "Error: La instalación de '$package_name' falló."; return 1; fi
+        hash -r
+        if ! command -v "$dep" &> /dev/null; then echo "Error: La instalación de '$package_name' falló."; return 1; fi
     fi
+    if [ "$was_installed" == "false" ]; then echo "$package_name" >> "$DEPS_LOG"; fi
     return 0
 }
 
 check_base_requirements() {
+    # 1. Verificar tput (para la interfaz)
     if ! command -v "tput" &> /dev/null; then
         echo "La herramienta 'tput' (para la interfaz) no está instalada."
         local ncurses_pkg="ncurses-bin"; local install_cmd=""
-        if $IS_TERMUX; then ncurses_pkg="ncurses-utils"; install_cmd="pkg install -y $ncurses_pkg"
-        elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"
-        elif command -v dnf &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo dnf install -y $ncurses_pkg"
-        elif command -v yum &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo yum install -y $ncurses_pkg"
-        elif command -v pacman &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo pacman -Syu --noconfirm $ncurses_pkg"
-        elif command -v zypper &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo zypper --non-interactive install $ncurses_pkg"
-        elif command -v apk &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo apk add --no-cache $ncurses_pkg"
-        elif command -v brew &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="brew install $ncurses_pkg"; fi
-        if [ -n "$install_cmd" ]; then printf "Instalando '$ncurses_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar '$ncurses_pkg'."; fi
-        else echo "Advertencia: no se pudo instalar 'tput'."; fi
+        if $IS_TERMUX; then ncurses_pkg="ncurses-utils"; install_cmd="pkg install -y $ncurses_pkg"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"; elif command -v dnf &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo dnf install -y $ncurses_pkg"; elif command -v yum &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo yum install -y $ncurses_pkg"; elif command -v pacman &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo pacman -Syu --noconfirm $ncurses_pkg"; elif command -v zypper &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo zypper --non-interactive install $ncurses_pkg"; elif command -v apk &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo apk add --no-cache $ncurses_pkg"; elif command -v brew &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="brew install $ncurses_pkg"; fi
+        if [ -n "$install_cmd" ]; then printf "Instalando '$ncurses_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar '$ncurses_pkg'."; fi; else echo "Advertencia: no se pudo instalar 'tput'."; fi
     fi
+    # 2. Verificar ssh (fundamental)
     if ! command -v "ssh" &> /dev/null; then
         echo "El cliente SSH ('ssh') no está instalado."
         local ssh_pkg="openssh-client"; local install_cmd=""
-        if $IS_TERMUX; then ssh_pkg="openssh"; install_cmd="pkg install -y $ssh_pkg"
-        elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ssh_pkg"
-        elif command -v dnf &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo dnf install -y $ssh_pkg"
-        elif command -v yum &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo yum install -y $ssh_pkg"
-        elif command -v pacman &> /dev/null; then ssh_pkg="openssh"; install_cmd="sudo pacman -Syu --noconfirm $ssh_pkg"
-        elif command -v zypper &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo zypper --non-interactive install $ssh_pkg"
-        elif command -v apk &> /dev/null; then ssh_pkg="openssh-client"; install_cmd="sudo apk add --no-cache $ssh_pkg"
-        elif command -v brew &> /dev/null; then ssh_pkg="openssh"; install_cmd="brew install $ssh_pkg"; fi
-        if [ -n "$install_cmd" ]; then printf "Instalando '$ssh_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar cliente SSH."; exit 1; fi
-        else echo "Error: No se pudo instalar el cliente SSH."; exit 1; fi
+        if $IS_TERMUX; then ssh_pkg="openssh"; install_cmd="pkg install -y $ssh_pkg"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ssh_pkg"; elif command -v dnf &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo dnf install -y $ssh_pkg"; elif command -v yum &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo yum install -y $ssh_pkg"; elif command -v pacman &> /dev/null; then ssh_pkg="openssh"; install_cmd="sudo pacman -Syu --noconfirm $ssh_pkg"; elif command -v zypper &> /dev/null; then ssh_pkg="openssh-clients"; install_cmd="sudo zypper --non-interactive install $ssh_pkg"; elif command -v apk &> /dev/null; then ssh_pkg="openssh-client"; install_cmd="sudo apk add --no-cache $ssh_pkg"; elif command -v brew &> /dev/null; then ssh_pkg="openssh"; install_cmd="brew install $ssh_pkg"; fi
+        if [ -n "$install_cmd" ]; then printf "Instalando '$ssh_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar cliente SSH."; exit 1; fi; else echo "Error: No se pudo instalar el cliente SSH."; exit 1; fi
     fi
 }
 
@@ -94,27 +78,31 @@ check_base_requirements() {
 show_usage() {
     echo "Uso: $(basename "$0") [comando] [argumentos...]"; echo "  o: $(basename "$0") <alias> [comando-remoto...]"
     echo ""; echo "Comandos:"; echo "  add,    -a                     Añade una nueva conexión."
-    echo "  edit,   -e <alias> [campo]   Edita una conexión (campo opcional: host,user,port,auth,dir,cmd)."
+    echo "  edit,   -e <alias> [campo]   Edita una conexión (campo: host,user,port,auth,dir,cmd)."
     echo "  list,   -l [-a | --all]        Lista conexiones. Con -a muestra todos los detalles."
     echo "  connect,-c <alias> [cmd]       Conecta a un servidor (o usa solo el <alias>)."
     if ! $IS_TERMUX; then echo "  browse, -b <alias>             Abre un explorador de archivos SFTP visual."; fi
+    echo "  scp,    -s <orig> <dest>     Copia archivos/directorios vía SCP."
+    echo "  tunnel, -t <alias> <LPORT:RHOST:RPORT>  Crea un túnel SSH local."
+    echo "  reverse-tunnel, -rt <alias> <RPORT:LHOST:LPORT> Crea un túnel SSH reverso."
     echo "  delete, -d <alias>             Elimina una conexión por su alias."
+    echo "  update, -u                     Busca y aplica actualizaciones para esta herramienta."
+    echo "  help,   -h                     Muestra esta ayuda."
     echo ""; echo "Si no se especifican comandos, se abrirá el menú interactivo."
 }
 
 show_menu() {
     echo "==================================="; echo "  Gestor de Conexiones SSH"; echo "==================================="
-    echo "l) Listar conexiones"; echo "c) Conectar a un servidor"; 
-    if ! $IS_TERMUX; then echo "b) Explorar archivos (SFTP Visual)"; fi
-    echo "a) Añadir nueva conexión"; echo "e) Editar una conexión"; echo "d) Eliminar una conexión"
-    echo "q) Salir"; echo "-----------------------------------"
+    echo "l) Listar"; echo "c) Conectar"; if ! $IS_TERMUX; then echo "b) Explorar"; fi; echo "s) Copiar (SCP)"; echo "t) Túnel"; echo "rt) Túnel Reverso"
+    echo "a) Añadir"; echo "e) Editar"; echo "d) Eliminar"
+    echo "u) Actualizar"; echo "h) Ayuda"; echo "q) Salir"; echo "-----------------------------------"
 }
 
 is_alias_reserved() { local alias_to_check=$1; for cmd in "${RESERVED_COMMANDS[@]}"; do if [[ "$cmd" == "$alias_to_check" ]]; then return 0; fi; done; return 1; }
 
 list_connections() {
     local show_all=false; if [[ "$1" == "-a" || "$1" == "--all" ]]; then show_all=true; fi
-    echo "Conexiones guardadas:"; grep -vE '^\s*$|^#' "$CONFIG_FILE" | while IFS='|' read -r alias host user port key pass remote_dir default_cmd _; do
+    echo "Conexiones guardadas:"; grep -vE '^\s*#|^\s*$' "$CONFIG_FILE" | while IFS='|' read -r alias host user port key pass remote_dir default_cmd _; do
         if [ "$show_all" = true ]; then
             echo "-------------------------"; echo "alias: $alias"; echo "host: $host"; echo "user: $user"; echo "port: $port"; if [ -n "$key" ]; then echo "key: $key"; fi; if [ -n "$pass" ]; then if [[ "$pass" == enc:* ]]; then echo "pass: (encriptada)"; else echo "pass: $pass (texto plano)"; fi; fi; if [ -n "$remote_dir" ]; then echo "directory: $remote_dir"; fi; if [ -n "$default_cmd" ]; then echo "command: $default_cmd"; fi
         else
@@ -177,9 +165,7 @@ connect_to_host() {
     if [ -z "$alias_to_connect" ]; then echo "Cancelado."; return 1; fi
     local connection_line; connection_line=$(grep -E "^${alias_to_connect}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias no encontrado."; return 1; fi
     IFS='|' read -r alias host user port key pass remote_dir default_cmd _ <<< "$connection_line"
-    
     local command_to_run="${remote_command:-$default_cmd}"
-
     echo "Conectando a $user@$host en el puerto $port..."; local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
     local final_command="$command_to_run"; if [ -n "$remote_dir" ]; then if [ -n "$final_command" ]; then final_command="cd \"$remote_dir\" && $final_command"; else final_command="cd \"$remote_dir\" && exec /bin/bash -l"; fi; fi
     if [ -n "$final_command" ] && [ "$final_command" != "$remote_command" ]; then echo "Iniciando en dir: $remote_dir"; elif [ -n "$remote_command" ]; then echo "Ejecutando: $remote_command"; fi
@@ -201,7 +187,47 @@ delete_connection() {
     echo "Conexión '$alias_to_delete' eliminada."
 }
 
+update_script() {
+    echo "Buscando actualizaciones..."
+    local remote_version
+    remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
+
+    if [ -z "$remote_version" ]; then
+        echo "No se pudo verificar la versión remota. Revisa tu conexión a internet."
+        return 1
+    fi
+    
+    if [ "$VERSION" == "$remote_version" ]; then
+        echo "Ya tienes la última versión instalada ($VERSION)."
+    else
+        echo "¡Nueva versión disponible! ($remote_version)"
+        read -p "¿Deseas actualizar ahora? (s/n): " choice
+        if [[ "$choice" =~ ^[sS]$ ]]; then
+            local install_script_url="$REPO_BASE_URL/install.sh"
+            local exec_cmd="curl -fsSL $install_script_url | sudo bash"
+            if $IS_TERMUX; then
+                exec_cmd="curl -fsSL $install_script_url | bash"
+            fi
+            
+            echo "Ejecutando el instalador..."
+            sh -c "$exec_cmd"
+            echo "Actualización completada. Por favor, reinicia el script."
+            exit 0
+        else
+            echo "Actualización cancelada."
+        fi
+    fi
+}
+
 run_interactive_menu() {
+    (
+        local remote_version
+        remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
+        if [ -n "$remote_version" ] && [ "$VERSION" != "$remote_version" ]; then
+            echo -e "\n\n\e[32mNueva versión ($remote_version) disponible. Ejecuta 'sshm update' para actualizar.\e[0m"
+        fi
+    ) &
+
     while true; do
         show_menu; read -p "Elige una opción: " choice
         case $choice in
@@ -211,7 +237,9 @@ run_interactive_menu() {
             a|A) add_connection ;;
             e|E) edit_connection ;;
             d|D) delete_connection ;;
+            u|U) update_script ;;
             q|Q) echo "¡Hasta luego!"; exit 0 ;;
+            h|H) show_usage ;;
             *) echo "Opción no válida.";;
         esac
     done
@@ -230,7 +258,7 @@ fi
 if [ "$#" -gt 0 ]; then
     COMMAND=$1
     shift
-    case $COMMAND in -a) FULL_COMMAND="add" ;; -e) FULL_COMMAND="edit" ;; -l) FULL_COMMAND="list" ;; -c) FULL_COMMAND="connect" ;; -b) FULL_COMMAND="browse" ;; -d) FULL_COMMAND="delete" ;; add|edit|list|connect|browse|delete) FULL_COMMAND=$COMMAND ;; *) FULL_COMMAND="" ;; esac
+    case $COMMAND in -a) FULL_COMMAND="add" ;; -e) FULL_COMMAND="edit" ;; -l) FULL_COMMAND="list" ;; -c) FULL_COMMAND="connect" ;; -b) FULL_COMMAND="browse" ;; -d) FULL_COMMAND="delete" ;; -u) FULL_COMMAND="update" ;; -h) FULL_COMMAND="help" ;; add|edit|list|connect|browse|delete|update|help) FULL_COMMAND=$COMMAND ;; *) FULL_COMMAND="" ;; esac
     if [ -n "$FULL_COMMAND" ]; then
         case $FULL_COMMAND in 
             add) add_connection ;; 
@@ -238,7 +266,9 @@ if [ "$#" -gt 0 ]; then
             list) list_connections "$1" ;; 
             connect) connect_to_host "$1" "${@:2}" ;; 
             browse) if $IS_TERMUX; then echo "Error: La función 'browse' no está disponible en Termux."; exit 1; else browse_sftp "$1"; fi ;; 
-            delete) delete_connection "$1" ;; 
+            delete) delete_connection "$1" ;;
+            update) update_script ;;
+            help) show_usage ;;
         esac
     else
         if grep -qE "^${COMMAND}\|" "$CONFIG_FILE"; then

@@ -9,8 +9,9 @@ Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar
 - **Seguridad Opcional**: Guarda contraseñas en texto plano o encriptadas con una palabra clave usando OpenSSL.
 - **Comandos Remotos**: Ejecuta comandos directamente en el servidor después de conectar (ej: `sshm mi-servidor top`).
 - **Explorador de Archivos Visual**: Navega por los archivos de tu servidor con una interfaz visual SFTP gracias a la integración con `sshfs` y `Midnight Commander`. (No disponible en Termux).
-- **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita en una amplia gama de distribuciones (Debian, Fedora, Arch, CentOS, Alpine, macOS, Termux y más).
-- **Portátil**: Funciona en la mayoría de los sistemas operativos tipo Unix.
+- **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita en una amplia gama de distribuciones.
+- **Auto-actualización**: El comando `update` busca la última versión en GitHub y se actualiza automáticamente.
+- **Portátil**: Funciona en la mayoría de los sistemas operativos tipo Unix, incluyendo Linux, macOS y Termux.
 
 ## 🚀 Instalación
 
@@ -18,12 +19,19 @@ Elige el comando adecuado para tu sistema:
 
 **Linux / macOS**
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | sudo bash
+curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | bash
+curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
+```
+
+## 🔄 Actualización
+
+Para actualizar a la última versión, simplemente ejecuta:
+```bash
+sshm update
 ```
 
 ## 🗑️ Desinstalación
@@ -32,12 +40,12 @@ Para desinstalar, simplemente ejecuta el siguiente comando:
 
 **Linux / macOS**
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | sudo bash
+curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | bash
+curl -fsSL (https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | bash
 ```
 
 
@@ -55,6 +63,11 @@ Una vez instalado, puedes llamarlo con `ssh-manage` o el atajo `sshm`.
 | `browse`         | `-b`  | Abre un explorador de archivos SFTP visual en el servidor.  |
 | `edit`           | `-e`  | Modifica una conexión existente.                            |
 | `delete`         | `-d`  | Elimina una conexión guardada.                              |
+| `update`         | `-u`  | Busca y aplica actualizaciones para la herramienta.         |
+| `scp`            | `-s`  | Copia archivos/directorios vía SCP.                         |
+| `tunnel`         | `-t`  | Crea un túnel SSH local.                                    |
+| `reverse-tunnel` | `-rt` | Crea un túnel SSH reverso.                                  |
+| `help`           | `-h`  | Muestra la ayuda.                                           |
 
 ### Ejemplos
 
@@ -83,13 +96,22 @@ sshm edit mi-servidor
 # Editar solo el usuario de una conexión
 sshm edit mi-servidor user
 
+# Copiar un archivo local al servidor
+sshm scp ./mi_archivo.txt mi-servidor:/home/user/
+
+# Descargar una carpeta del servidor
+sshm scp -r mi-servidor:/var/log ./logs_locales
+
+# Crear un túnel para acceder a una base de datos remota
+sshm tunnel mi-servidor 3307:localhost:3306
+
 # Eliminar una conexión
 sshm delete mi-servidor
 ```
 
 ## ⚙️ Configuración
 
-El archivo de configuración se crea automáticamente en `~/.config/ssh-manager/connections.txt`. Puedes editarlo manualmente si lo necesitas.
+El archivo de configuración se crea automáticamente en la ruta que elijas durante la instalación (por defecto `~/.config/ssh-manager/connections.txt`).
 
 El formato es un archivo de texto simple donde cada línea es una conexión y los campos están separados por `|`:
 

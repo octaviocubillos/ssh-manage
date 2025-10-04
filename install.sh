@@ -5,7 +5,7 @@
 # ==============================================================================
 #
 #   Este script descarga la última versión de ssh-manager, la instala
-#   globalmente y crea los alias `ssh-manage` y `sshm`.
+#   globalmente y te permite elegir dónde guardar tus configuraciones.
 #
 #   Uso (Linux/macOS): curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
 #   Uso (Termux):      curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
@@ -23,6 +23,15 @@ ALIAS_CMD="sshm"
 
 main() {
     local INSTALL_DIR
+    local original_user="${SUDO_USER:-$USER}"
+    local user_home
+
+    # Obtener el directorio home del usuario original
+    if [ "$original_user" != "root" ] && [ -n "$SUDO_USER" ]; then
+        user_home=$(eval echo "~$original_user")
+    else
+        user_home="$HOME"
+    fi
 
     # Detección del entorno (Termux o estándar)
     if [[ -n "$PREFIX" ]]; then
@@ -31,43 +40,53 @@ main() {
     else
         echo "Detectado entorno estándar (Linux/macOS)."
         INSTALL_DIR="/usr/local/bin"
-        # Verificar si se está ejecutando como root fuera de Termux
         if [ "$EUID" -ne 0 ]; then
-            echo "Este instalador necesita privilegios de superusuario en este sistema."
-            echo "Por favor, ejecútalo con: curl ... | sudo bash"
-            exit 1
+            echo "Este instalador necesita privilegios de superusuario."; exit 1
         fi
     fi
 
     echo "Iniciando la instalación de SSH Manager..."
-
+    
+    # --- Preguntar por la ruta de configuración ---
+    local default_config_dir="$user_home/.config/ssh-manager"
+    read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir
+    config_dir=${config_dir:-$default_config_dir}
+    
+    # Expandir tilde (~) si el usuario la introduce
+    eval config_dir="$config_dir"
+    
+    echo "Las conexiones se guardarán en: $config_dir"
+    
     # Descargar el script principal
     echo "Descargando la última versión desde GitHub..."
     if ! curl -fsSL "$REPO_URL" -o "$INSTALL_DIR/$MAIN_CMD"; then
-        echo "Error: No se pudo descargar el script. Verifica la URL y tu conexión a internet."
-        exit 1
+        echo "Error: No se pudo descargar el script."; exit 1
     fi
 
-    # Hacer el script ejecutable
-    echo "Estableciendo permisos de ejecución..."
     chmod +x "$INSTALL_DIR/$MAIN_CMD"
-
-    # Crear el alias/symlink
-    echo "Creando el atajo 'sshm'..."
-    # -f para forzar la sobreescritura si ya existe
     ln -sf "$INSTALL_DIR/$MAIN_CMD" "$INSTALL_DIR/$ALIAS_CMD"
     
+    # --- Crear el directorio y el puntero de configuración ---
+    local pointer_file="$user_home/.sshm_config_path"
+
+    echo "Creando directorio de configuración..."
+    # Ejecutar como el usuario original para crear el directorio en su home
+    if [ "$EUID" -eq 0 ] && [ "$original_user" != "root" ]; then
+        sudo -u "$original_user" mkdir -p "$config_dir"
+        echo "Guardando la ruta de configuración en $pointer_file..."
+        sudo -u "$original_user" bash -c "echo '$config_dir' > '$pointer_file'"
+    else
+        mkdir -p "$config_dir"
+        echo "Guardando la ruta de configuración en $pointer_file..."
+        echo "$config_dir" > "$pointer_file"
+    fi
+
     echo ""
     echo "--------------------------------------------------------"
     echo " ¡Instalación completada con éxito!"
     echo "--------------------------------------------------------"
-    echo ""
-    echo "Ahora puedes usar los comandos 'ssh-manage' o 'sshm' desde cualquier lugar."
-    echo "Ejemplo: sshm add"
-    echo ""
-    echo "La primera vez que ejecutes el script, se creará el directorio de configuración en: ~/.config/ssh-manager/"
+    echo "Ahora puedes usar los comandos 'ssh-manage' o 'sshm'."
     echo ""
 }
 
-# Ejecutar la función principal
 main
