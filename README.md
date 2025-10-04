@@ -19,12 +19,12 @@ Elige el comando adecuado para tu sistema:
 
 **Linux / macOS**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | bash
 ```
 
 ## 🔄 Actualización
@@ -40,12 +40,12 @@ Para desinstalar, simplemente ejecuta el siguiente comando:
 
 **Linux / macOS**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | sudo bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | sudo bash
 ```
 
 **Termux (Android)**
 ```bash
-curl -fsSL (https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh | bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | bash
 ```
 
 
@@ -64,10 +64,10 @@ Una vez instalado, puedes llamarlo con `ssh-manage` o el atajo `sshm`.
 | `edit`           | `-e`  | Modifica una conexión existente.                            |
 | `delete`         | `-d`  | Elimina una conexión guardada.                              |
 | `update`         | `-u`  | Busca y aplica actualizaciones para la herramienta.         |
+| `help`           | `-h`  | Muestra la ayuda.                                           |
 | `scp`            | `-s`  | Copia archivos/directorios vía SCP.                         |
 | `tunnel`         | `-t`  | Crea un túnel SSH local.                                    |
 | `reverse-tunnel` | `-rt` | Crea un túnel SSH reverso.                                  |
-| `help`           | `-h`  | Muestra la ayuda.                                           |
 
 ### Ejemplos
 

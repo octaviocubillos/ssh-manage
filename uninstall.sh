@@ -43,7 +43,7 @@ main() {
     # Desinstalar dependencias
     if [ -f "$deps_log" ]; then
         echo ""
-        read -p "¿Deseas desinstalar las dependencias que SSH Manager instaló? (s/n): " choice
+        read -p "¿Deseas desinstalar las dependencias que SSH Manager instaló? (s/n): " choice < /dev/tty
         if [[ "$choice" =~ ^[sS]$ ]]; then
             echo "Desinstalando dependencias..."
             local uninstall_cmd=""
@@ -66,7 +66,7 @@ main() {
     # Preguntar sobre el directorio de configuración
     if [ -d "$config_dir" ]; then
         echo ""
-        read -p "¿Deseas eliminar también el directorio de configuración '$config_dir'? (s/n): " choice
+        read -p "¿Deseas eliminar también el directorio de configuración '$config_dir'? (s/n): " choice < /dev/tty
         if [[ "$choice" =~ ^[sS]$ ]]; then echo "Eliminando directorio de configuración..."; rm -rf "$config_dir"; else echo "Se conservará el directorio de configuración."; fi
     fi
     

@@ -49,7 +49,8 @@ main() {
     
     # --- Preguntar por la ruta de configuración ---
     local default_config_dir="$user_home/.config/ssh-manager"
-    read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir
+    # CORREGIDO: Leer directamente desde la terminal del usuario
+    read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty
     config_dir=${config_dir:-$default_config_dir}
     
     # Expandir tilde (~) si el usuario la introduce
