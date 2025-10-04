@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v5.0
+#                 GESTOR DE CONEXIONES SSH v5.2
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
-#   Diseñado para ser instalado globalmente.
+#   Compatible con Linux, macOS y Termux.
 #
 # ==============================================================================
 
@@ -22,6 +22,11 @@ RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-
 # --- VERIFICACIÓN DE DEPENDENCIAS Y ANIMACIÓN ---
 
 show_spinner() {
+    # Fallback si tput no está disponible
+    if ! command -v "tput" &> /dev/null; then
+        while true; do sleep 1; done
+        return
+    fi
     local -r FRAMES='|/-\'
     local -r NUMBER_OF_FRAMES=${#FRAMES}
     local -r delay=0.1
@@ -35,13 +40,56 @@ ensure_dependency() {
     local dep=$1; local package_name=${2:-$1}
     if ! command -v "$dep" &> /dev/null; then
         echo "La herramienta '$dep' es necesaria y no está instalada."
-        local install_cmd=""; if command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"; elif command -v dnf &> /dev/null; then install_cmd="sudo dnf install -y $package_name"; elif command -v brew &> /dev/null; then install_cmd="brew install $package_name"; else echo "Error: Gestor de paquetes no compatible."; return 1; fi
+        local install_cmd=""
+        if command -v pkg &> /dev/null; then # Termux
+            install_cmd="pkg install -y $package_name"
+        elif command -v apt-get &> /dev/null; then
+            install_cmd="sudo apt-get update -y && sudo apt-get install -y $package_name"
+        elif command -v dnf &> /dev/null; then
+            install_cmd="sudo dnf install -y $package_name"
+        elif command -v brew &> /dev/null; then
+            install_cmd="brew install $package_name"
+        else
+            echo "Error: Gestor de paquetes no compatible."; return 1
+        fi
         printf "Instalando '$package_name'...  "; show_spinner &
         local spinner_pid=$!; eval "$install_cmd" > /dev/null 2>&1
         kill $spinner_pid &>/dev/null; wait $spinner_pid 2>/dev/null; printf "\b\bListo.\n"
         if ! command -v "$dep" &> /dev/null; then echo "Error: La instalación de '$package_name' falló."; return 1; fi
     fi
     return 0
+}
+
+check_base_requirements() {
+    if ! command -v "tput" &> /dev/null; then
+        echo "La herramienta 'tput' (para la interfaz) no está instalada."
+        local ncurses_pkg="ncurses-bin" # Debian/Ubuntu
+        local install_cmd=""
+
+        if command -v pkg &> /dev/null; then
+            ncurses_pkg="ncurses-utils"
+            install_cmd="pkg install -y $ncurses_pkg"
+        elif command -v apt-get &> /dev/null; then
+            install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"
+        elif command -v dnf &> /dev/null; then
+            ncurses_pkg="ncurses" # Fedora/RHEL
+            install_cmd="sudo dnf install -y $ncurses_pkg"
+        elif command -v brew &> /dev/null; then
+            ncurses_pkg="ncurses" # macOS
+            install_cmd="brew install $ncurses_pkg"
+        fi
+
+        if [ -n "$install_cmd" ]; then
+            printf "Instalando '$ncurses_pkg'...\n"
+            if eval "$install_cmd"; then
+                echo "Instalación de '$ncurses_pkg' completada."
+            else
+                echo "Error: La instalación de '$ncurses_pkg' falló. Por favor, instálala manualmente."
+            fi
+        else
+            echo "Advertencia: no se pudo instalar 'tput'. La interfaz podría tener fallos visuales."
+        fi
+    fi
 }
 
 
@@ -60,9 +108,9 @@ show_usage() {
 
 show_menu() {
     echo "==================================="; echo "  Gestor de Conexiones SSH"; echo "==================================="
-    echo "1. Listar conexiones"; echo "2. Conectar a un servidor"; echo "3. Explorar archivos (SFTP Visual)"
-    echo "4. Añadir nueva conexión"; echo "5. Editar una conexión"; echo "6. Eliminar una conexión"
-    echo "7. Salir"; echo "-----------------------------------"
+    echo "l) Listar conexiones"; echo "c) Conectar a un servidor"; echo "b) Explorar archivos (SFTP Visual)"
+    echo "a) Añadir nueva conexión"; echo "e) Editar una conexión"; echo "d) Eliminar una conexión"
+    echo "q) Salir"; echo "-----------------------------------"
 }
 
 is_alias_reserved() { local alias_to_check=$1; for cmd in "${RESERVED_COMMANDS[@]}"; do if [[ "$cmd" == "$alias_to_check" ]]; then return 0; fi; done; return 1; }
@@ -88,7 +136,7 @@ add_connection() {
     key_path=""; password=""
     if [ "$auth_choice" = "1" ]; then read -p "Ruta a clave: " key_path
     elif [ "$auth_choice" = "2" ]; then read -s -p "Contraseña: " password; echo ""
-    elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Contraseña a encriptar: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); password="enc:$encrypted_pass"
+    elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl-tool" "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Contraseña a encriptar: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); password="enc:$encrypted_pass"
     fi
     read -p "Directorio remoto (opcional): " remote_dir
     echo "$alias|$host|$user|$port|$key_path|$password|$remote_dir|" >> "$CONFIG_FILE"; echo "¡Conexión '$alias' añadida!"
@@ -100,9 +148,9 @@ edit_connection() {
     IFS='|' read -r old_alias old_host old_user old_port old_key old_pass old_remote_dir _ <<< "$connection_line"
     local new_alias="$old_alias"; local new_host="$old_host"; local new_user="$old_user"; local new_port="$old_port"; local new_key="$old_key"; local new_pass="$old_pass"; local new_remote_dir="$old_remote_dir"
     if [ -n "$field_to_edit" ]; then
-        echo "Editando campo '$field_to_edit' para '$alias_to_edit'..."; case $field_to_edit in alias) while true; do read -p "Nuevo alias: " new_alias; if [ -z "$new_alias" ]; then echo "Alias vacío."; elif [[ "$new_alias" != "$old_alias" ]] && grep -qE "^${new_alias}\|" "$CONFIG_FILE"; then echo "Alias ya existe."; elif is_alias_reserved "$new_alias"; then echo "Alias reservado."; else break; fi; done;; host) while true; do read -p "Nuevo host: " new_host; if [ -z "$new_host" ]; then echo "Host obligatorio."; else break; fi; done;; user) while true; do read -p "Nuevo usuario: " new_user; if [ -z "$new_user" ]; then echo "Usuario obligatorio."; else break; fi; done;; port) read -p "Nuevo puerto: " new_port;; dir) read -p "Nuevo dir. remoto: " new_remote_dir;; auth) echo "Tipo auth: 1) Clave SSH, 2) Pass (plano), 3) Pass (encriptada), 4) Ninguna"; read -p "Opción: " auth_choice; new_key=""; new_pass=""; if [ "$auth_choice" = "1" ]; then read -p "Ruta a clave: " new_key; elif [ "$auth_choice" = "2" ]; then read -s -p "Nueva Contraseña: " new_pass; echo ""; elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Nueva Contraseña: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); new_pass="enc:$encrypted_pass"; fi;; *) echo "Error: Campo '$field_to_edit' desconocido. Los campos válidos son: alias, host, user, port, dir, auth."; return 1;; esac
+        echo "Editando campo '$field_to_edit' para '$alias_to_edit'..."; case $field_to_edit in alias) while true; do read -p "Nuevo alias: " new_alias; if [ -z "$new_alias" ]; then echo "Alias vacío."; elif [[ "$new_alias" != "$old_alias" ]] && grep -qE "^${new_alias}\|" "$CONFIG_FILE"; then echo "Alias ya existe."; elif is_alias_reserved "$new_alias"; then echo "Alias reservado."; else break; fi; done;; host) while true; do read -p "Nuevo host: " new_host; if [ -z "$new_host" ]; then echo "Host obligatorio."; else break; fi; done;; user) while true; do read -p "Nuevo usuario: " new_user; if [ -z "$new_user" ]; then echo "Usuario obligatorio."; else break; fi; done;; port) read -p "Nuevo puerto: " new_port;; dir) read -p "Nuevo dir. remoto: " new_remote_dir;; auth) echo "Tipo auth: 1) Clave SSH, 2) Pass (plano), 3) Pass (encriptada), 4) Ninguna"; read -p "Opción: " auth_choice; new_key=""; new_pass=""; if [ "$auth_choice" = "1" ]; then read -p "Ruta a clave: " new_key; elif [ "$auth_choice" = "2" ]; then read -s -p "Nueva Contraseña: " new_pass; echo ""; elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl-tool" "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Nueva Contraseña: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); new_pass="enc:$encrypted_pass"; fi;; *) echo "Error: Campo '$field_to_edit' desconocido. Los campos válidos son: alias, host, user, port, dir, auth."; return 1;; esac
     else
-        echo "Editando '$old_alias'. Enter para mantener valor."; while true; do read -p "Nuevo alias [$old_alias]: " new_alias; new_alias=${new_alias:-$old_alias}; if [ -z "$new_alias" ]; then echo "Alias vacío."; elif [[ "$new_alias" != "$old_alias" ]] && grep -qE "^${new_alias}\|" "$CONFIG_FILE"; then echo "Alias ya existe."; elif is_alias_reserved "$new_alias"; then echo "Alias reservado."; else break; fi; done; while true; do read -p "Nuevo host [$old_host]: " new_host; new_host=${new_host:-$old_host}; if [ -z "$new_host" ]; then echo "Host obligatorio."; else break; fi; done; while true; do read -p "Nuevo usuario [$old_user]: " new_user; new_user=${new_user:-$old_user}; if [ -z "$new_user" ]; then echo "Usuario obligatorio."; else break; fi; done; read -p "Nuevo puerto [$old_port]: " new_port; new_port=${new_port:-$old_port}; read -p "Nuevo dir. remoto [$old_remote_dir]: " new_remote_dir; new_remote_dir=${new_remote_dir:-$old_remote_dir}; read -p "¿Cambiar auth? (s/n): " change_auth; if [[ "$change_auth" =~ ^[sS]$ ]]; then echo "Tipo auth: 1) Clave SSH, 2) Pass (plano), 3) Pass (encriptada), 4) Ninguna"; read -p "Opción: " auth_choice; new_key=""; new_pass=""; if [ "$auth_choice" = "1" ]; then read -p "Ruta a clave: " new_key; elif [ "$auth_choice" = "2" ]; then read -s -p "Nueva Contraseña: " new_pass; echo ""; elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Nueva Contraseña: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); new_pass="enc:$encrypted_pass"; else new_key="$old_key"; new_pass="$old_pass"; fi; fi
+        echo "Editando '$old_alias'. Enter para mantener valor."; while true; do read -p "Nuevo alias [$old_alias]: " new_alias; new_alias=${new_alias:-$old_alias}; if [ -z "$new_alias" ]; then echo "Alias vacío."; elif [[ "$new_alias" != "$old_alias" ]] && grep -qE "^${new_alias}\|" "$CONFIG_FILE"; then echo "Alias ya existe."; elif is_alias_reserved "$new_alias"; then echo "Alias reservado."; else break; fi; done; while true; do read -p "Nuevo host [$old_host]: " new_host; new_host=${new_host:-$old_host}; if [ -z "$new_host" ]; then echo "Host obligatorio."; else break; fi; done; while true; do read -p "Nuevo usuario [$old_user]: " new_user; new_user=${new_user:-$old_user}; if [ -z "$new_user" ]; then echo "Usuario obligatorio."; else break; fi; done; read -p "Nuevo puerto [$old_port]: " new_port; new_port=${new_port:-$old_port}; read -p "Nuevo dir. remoto [$old_remote_dir]: " new_remote_dir; new_remote_dir=${new_remote_dir:-$old_remote_dir}; read -p "¿Cambiar auth? (s/n): " change_auth; if [[ "$change_auth" =~ ^[sS]$ ]]; then echo "Tipo auth: 1) Clave SSH, 2) Pass (plano), 3) Pass (encriptada), 4) Ninguna"; read -p "Opción: " auth_choice; new_key=""; new_pass=""; if [ "$auth_choice" = "1" ]; then read -p "Ruta a clave: " new_key; elif [ "$auth_choice" = "2" ]; then read -s -p "Nueva Contraseña: " new_pass; echo ""; elif [ "$auth_choice" = "3" ]; then ensure_dependency "openssl-tool" "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; read -s -p "Nueva Contraseña: " pass_to_encrypt; echo ""; encrypted_pass=$(echo "$pass_to_encrypt" | openssl enc -aes-256-cbc -a -salt -pbkdf2 -pass pass:"$keyword"); new_pass="enc:$encrypted_pass"; else new_key="$old_key"; new_pass="$old_pass"; fi; fi
     fi
     local new_line="$new_alias|$new_host|$new_user|$new_port|$new_key|$new_pass|$new_remote_dir|"
     grep -vE "^${old_alias}\|" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"; echo "$new_line" >> "${CONFIG_FILE}.tmp"; mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; echo "¡Conexión '$new_alias' actualizada!"
@@ -110,12 +158,13 @@ edit_connection() {
 
 browse_sftp() {
     ensure_dependency "mc" || return 1; ensure_dependency "sshfs" || return 1
+    if [[ "$OSTYPE" != "linux-gnu"* ]] && [[ ! -d "$HOME/.termux" ]]; then echo "Error: La exploración visual solo es compatible con Linux."; return 1; fi
     if [ -f /.dockerenv ] && [ ! -c /dev/fuse ]; then echo "Error en Docker: Reinicia con --cap-add SYS_ADMIN --device /dev/fuse"; return 1; fi
-    if [ ! -f /.dockerenv ] && ! lsmod | grep -q "^fuse\s" 2>/dev/null; then if ! sudo modprobe fuse; then echo "Error: No se pudo cargar módulo 'fuse'."; return 1; fi; fi
+    if [ ! -f /.dockerenv ] && [[ -z "${PREFIX}" ]] && ! lsmod | grep -q "^fuse\s" 2>/dev/null; then if ! sudo modprobe fuse; then echo "Error: No se pudo cargar módulo 'fuse'."; return 1; fi; fi
     local alias_to_browse=$1; if [ -z "$alias_to_browse" ]; then list_connections; read -p "Alias a explorar: " alias_to_browse; fi; if [ -z "$alias_to_browse" ]; then echo "Cancelado."; return 1; fi
     local connection_line; connection_line=$(grep -E "^${alias_to_browse}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias no encontrado."; return 1; fi
     IFS='|' read -r alias host user port key pass remote_dir _ <<< "$connection_line"
-    local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
+    local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl-tool" "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
     local MOUNT_POINT; MOUNT_POINT=$(mktemp -d); trap 'fusermount -u "$MOUNT_POINT" 2>/dev/null; rmdir "$MOUNT_POINT" 2>/dev/null; echo "Conexión SFTP cerrada."; exit' INT TERM EXIT
     echo "Montando en $MOUNT_POINT..."; local sshfs_opts="-p $port -o allow_other,default_permissions,StrictHostKeyChecking=no"; if [ -n "$key" ]; then sshfs_opts+=" -o IdentityFile=$key"; fi
     local remote_path_to_mount; local mc_start_path; if [ -n "$remote_dir" ]; then remote_path_to_mount="/"; mc_start_path="$MOUNT_POINT/$(echo "$remote_dir" | sed 's#^/##')"; else remote_path_to_mount=""; mc_start_path="$MOUNT_POINT"; fi
@@ -131,7 +180,7 @@ connect_to_host() {
     local connection_line; connection_line=$(grep -E "^${alias_to_connect}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias no encontrado."; return 1; fi
     IFS='|' read -r alias host user port key pass remote_dir _ <<< "$connection_line"
     
-    echo "Conectando a $user@$host en el puerto $port..."; local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
+    echo "Conectando a $user@$host en el puerto $port..."; local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl-tool" "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
     local final_command="$remote_command"; if [ -n "$remote_dir" ]; then if [ -n "$final_command" ]; then final_command="cd \"$remote_dir\" && $final_command"; else final_command="cd \"$remote_dir\" && exec /bin/bash -l"; fi; fi
     if [ -n "$final_command" ] && [ "$final_command" != "$remote_command" ]; then echo "Iniciando en dir: $remote_dir"; elif [ -n "$remote_command" ]; then echo "Ejecutando: $remote_command"; fi
     local tty_option=""; if [ -n "$final_command" ]; then tty_option="-t"; fi
@@ -154,14 +203,23 @@ delete_connection() {
 
 run_interactive_menu() {
     while true; do
-        show_menu; read -p "Elige una opción [-7]: " choice
+        show_menu; read -p "Elige una opción: " choice
         case $choice in
-            1) list_connections ;; 2) connect_to_host ;; 3) browse_sftp ;; 4) add_connection ;; 5) edit_connection ;; 6) delete_connection ;; 7) echo "¡Hasta luego!"; exit 0 ;; *) echo "Opción no válida.";;
+            l|L) list_connections ;;
+            c|C) connect_to_host ;;
+            b|B) browse_sftp ;;
+            a|A) add_connection ;;
+            e|E) edit_connection ;;
+            d|D) delete_connection ;;
+            q|Q) echo "¡Hasta luego!"; exit 0 ;;
+            *) echo "Opción no válida.";;
         esac
     done
 }
 
 # --- PUNTO DE ENTRADA PRINCIPAL ---
+check_base_requirements
+
 # Crear el directorio de configuración si no existe
 mkdir -p "$CONFIG_DIR"
 
@@ -171,12 +229,19 @@ fi
 
 if [ "$#" -gt 0 ]; then
     COMMAND=$1
-    shift 
+    shift
     case $COMMAND in -a) FULL_COMMAND="add" ;; -e) FULL_COMMAND="edit" ;; -l) FULL_COMMAND="list" ;; -c) FULL_COMMAND="connect" ;; -b) FULL_COMMAND="browse" ;; -d) FULL_COMMAND="delete" ;; add|edit|list|connect|browse|delete) FULL_COMMAND=$COMMAND ;; *) FULL_COMMAND="" ;; esac
     if [ -n "$FULL_COMMAND" ]; then
         case $FULL_COMMAND in add) add_connection ;; edit) edit_connection "$1" "$2" ;; list) list_connections "$1" ;; connect) connect_to_host "$1" "${@:2}" ;; browse) browse_sftp "$1" ;; delete) delete_connection "$1" ;; esac
     else
-        if grep -qE "^${COMMAND}\|" "$CONFIG_FILE"; then connect_to_host "$COMMAND" "$@"; else echo "Error: Comando o alias '$COMMAND' no reconocido."; show_usage; exit 1; fi
+        # Si no es un comando, el primer argumento original era el alias
+        if grep -qE "^${COMMAND}\|" "$CONFIG_FILE"; then
+            connect_to_host "$COMMAND" "$@"
+        else
+            echo "Error: Comando o alias '$COMMAND' no reconocido."
+            show_usage
+            exit 1
+        fi
     fi
 else
     run_interactive_menu

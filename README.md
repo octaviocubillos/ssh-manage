@@ -9,16 +9,21 @@ Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar
 - **Seguridad Opcional**: Guarda contraseñas en texto plano o encriptadas con una palabra clave usando OpenSSL.
 - **Comandos Remotos**: Ejecuta comandos directamente en el servidor después de conectar (ej: `sshm mi-servidor top`).
 - **Explorador de Archivos Visual**: Navega por los archivos de tu servidor con una interfaz visual SFTP gracias a la integración con `sshfs` y `Midnight Commander`.
-- **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita (`sshpass`, `openssl`, `mc`, `sshfs`).
-- **Cero Dependencias (Básico)**: En su modo más simple (usando solo claves SSH), no requiere instalar nada.
-- **Portátil**: Funciona en la mayoría de los sistemas Linux y macOS.
+- **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita (`sshpass`, `openssl`, `mc`, `sshfs`, `ncurses`).
+- **Portátil**: Funciona en la mayoría de los sistemas Linux, macOS y Termux.
 
 ## 🚀 Instalación
 
-Puedes instalar `ssh-manager` con un simple comando. Se instalará en `/usr/local/bin` y estará disponible como `ssh-manage` y `sshm`.
+Elige el comando adecuado para tu sistema:
 
+**Linux / macOS**
 ```bash
 curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | sudo bash
+```
+
+**Termux (Android)**
+```bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | bash
 ```
 
 ## 💻 Uso
@@ -75,4 +80,6 @@ El formato es un archivo de texto simple donde cada línea es una conexión y lo
 
 ```
 alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|
+
+
 ```

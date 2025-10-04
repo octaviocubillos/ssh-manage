@@ -4,10 +4,11 @@
 #                 INSTALADOR DE SSH MANAGER
 # ==============================================================================
 #
-#   Este script descarga la última versión de ssh-manager, la instala en
-#   /usr/local/bin y crea los alias `ssh-manage` y `sshm`.
+#   Este script descarga la última versión de ssh-manager, la instala
+#   globalmente y crea los alias `ssh-manage` y `sshm`.
 #
-#   Uso: curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
+#   Uso (Linux/macOS): curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
+#   Uso (Termux):      curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
 #
 # ==============================================================================
 
@@ -15,18 +16,27 @@ set -e # Salir inmediatamente si un comando falla
 
 # --- VARIABLES ---
 REPO_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/ssh-manager.sh"
-INSTALL_DIR="/usr/local/bin"
 MAIN_CMD="ssh-manage"
 ALIAS_CMD="sshm"
 
 # --- LÓGICA DE INSTALACIÓN ---
 
 main() {
-    # Verificar si se está ejecutando como root
-    if [ "$EUID" -ne 0 ]; then
-        echo "Este instalador necesita privilegios de superusuario."
-        echo "Por favor, ejecútalo con sudo o como root."
-        exit 1
+    local INSTALL_DIR
+
+    # Detección del entorno (Termux o estándar)
+    if [[ -d "$HOME/.termux" ]]; then
+        echo "Detectado entorno Termux."
+        INSTALL_DIR="$PREFIX/bin"
+    else
+        echo "Detectado entorno estándar (Linux/macOS)."
+        INSTALL_DIR="/usr/local/bin"
+        # Verificar si se está ejecutando como root fuera de Termux
+        if [ "$EUID" -ne 0 ]; then
+            echo "Este instalador necesita privilegios de superusuario en este sistema."
+            echo "Por favor, ejecútalo con: curl ... | sudo bash"
+            exit 1
+        fi
     fi
 
     echo "Iniciando la instalación de SSH Manager..."
@@ -47,15 +57,6 @@ main() {
     # -f para forzar la sobreescritura si ya existe
     ln -sf "$INSTALL_DIR/$MAIN_CMD" "$INSTALL_DIR/$ALIAS_CMD"
     
-    # Crear el directorio de configuración para el usuario que invocó sudo
-    local original_user="${SUDO_USER:-$USER}"
-    if [ "$original_user" != "root" ]; then
-        local config_dir="/home/$original_user/.config/ssh-manager"
-        echo "Creando el directorio de configuración en $config_dir..."
-        # Usar 'runuser' o 'sudo -u' para ejecutar como el usuario original
-        runuser -u "$original_user" -- mkdir -p "$config_dir"
-    fi
-
     echo ""
     echo "--------------------------------------------------------"
     echo " ¡Instalación completada con éxito!"
@@ -64,7 +65,7 @@ main() {
     echo "Ahora puedes usar los comandos 'ssh-manage' o 'sshm' desde cualquier lugar."
     echo "Ejemplo: sshm add"
     echo ""
-    echo "Tu archivo de configuración se encuentra en: ~/.config/ssh-manager/connections.txt"
+    echo "La primera vez que ejecutes el script, se creará el directorio de configuración en: ~/.config/ssh-manager/"
     echo ""
 }
 
