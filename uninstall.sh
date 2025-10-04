@@ -47,7 +47,7 @@ main() {
         if [[ "$choice" =~ ^[sS]$ ]]; then
             echo "Desinstalando dependencias..."
             local uninstall_cmd=""
-            local packages=$(cat "$deps_log")
+            local packages=$(tr '\n' ' ' < "$deps_log")
             if command -v pkg &> /dev/null; then uninstall_cmd="pkg uninstall -y $packages"
             elif command -v apt-get &> /dev/null; then uninstall_cmd="sudo apt-get purge -y $packages"
             elif command -v dnf &> /dev/null; then uninstall_cmd="sudo dnf remove -y $packages"

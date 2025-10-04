@@ -56,14 +56,12 @@ ensure_dependency() {
 }
 
 check_base_requirements() {
-    # 1. Verificar tput (para la interfaz)
     if ! command -v "tput" &> /dev/null; then
         echo "La herramienta 'tput' (para la interfaz) no está instalada."
         local ncurses_pkg="ncurses-bin"; local install_cmd=""
         if $IS_TERMUX; then ncurses_pkg="ncurses-utils"; install_cmd="pkg install -y $ncurses_pkg"; elif command -v apt-get &> /dev/null; then install_cmd="sudo apt-get update -y && sudo apt-get install -y $ncurses_pkg"; elif command -v dnf &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo dnf install -y $ncurses_pkg"; elif command -v yum &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo yum install -y $ncurses_pkg"; elif command -v pacman &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo pacman -Syu --noconfirm $ncurses_pkg"; elif command -v zypper &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo zypper --non-interactive install $ncurses_pkg"; elif command -v apk &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="sudo apk add --no-cache $ncurses_pkg"; elif command -v brew &> /dev/null; then ncurses_pkg="ncurses"; install_cmd="brew install $ncurses_pkg"; fi
         if [ -n "$install_cmd" ]; then printf "Instalando '$ncurses_pkg'...\n"; if eval "$install_cmd"; then echo "Instalación completada."; hash -r; else echo "Error al instalar '$ncurses_pkg'."; fi; else echo "Advertencia: no se pudo instalar 'tput'."; fi
     fi
-    # 2. Verificar ssh (fundamental)
     if ! command -v "ssh" &> /dev/null; then
         echo "El cliente SSH ('ssh') no está instalado."
         local ssh_pkg="openssh-client"; local install_cmd=""
@@ -142,7 +140,93 @@ edit_connection() {
     grep -vE "^${old_alias}\|" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"; echo "$new_line" >> "${CONFIG_FILE}.tmp"; mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; echo "¡Conexión '$new_alias' actualizada!"
 }
 
-# ... (El resto de las funciones: browse_sftp, connect_to_host, etc. van aquí) ...
+connect_to_host() {
+    local alias_to_connect=$1; local remote_command=$2
+    if [ -z "$alias_to_connect" ]; then list_connections; read -p "Alias: " alias_to_connect; fi
+    if [ -z "$alias_to_connect" ]; then echo "Cancelado."; return 1; fi
+    local connection_line; connection_line=$(grep -E "^${alias_to_connect}\|" "$CONFIG_FILE"); if [ -z "$connection_line" ]; then echo "Error: Alias no encontrado."; return 1; fi
+    IFS='|' read -r alias host user port key pass remote_dir default_cmd _ <<< "$connection_line"
+    local command_to_run="${remote_command:-$default_cmd}"
+    echo "Conectando a $user@$host en el puerto $port..."; local decrypted_pass=""; if [[ "$pass" == enc:* ]]; then ensure_dependency "openssl" || return 1; read -s -p "Palabra clave: " keyword; echo ""; local encrypted_data=${pass#enc:}; decrypted_pass=$(echo "$encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$keyword" 2>/dev/null); if [ -z "$decrypted_pass" ]; then echo "Error de desencriptación."; return 1; fi; elif [ -n "$pass" ]; then decrypted_pass="$pass"; fi
+    local final_command="$command_to_run"; if [ -n "$remote_dir" ]; then if [ -n "$final_command" ]; then final_command="cd \"$remote_dir\" && $final_command"; else final_command="cd \"$remote_dir\" && exec /bin/bash -l"; fi; fi
+    if [ -n "$final_command" ] && [ "$final_command" != "$remote_command" ]; then echo "Iniciando en dir: $remote_dir"; elif [ -n "$remote_command" ]; then echo "Ejecutando: $remote_command"; fi
+    local tty_option=""; if [ -n "$final_command" ]; then tty_option="-t"; fi
+
+    if [ -n "$key" ]; then
+        ssh $tty_option -i "$key" -p "$port" "$user@$host" "$final_command"
+    elif [ -n "$decrypted_pass" ]; then
+        ensure_dependency "sshpass" || return 1
+        sshpass -p "$decrypted_pass" ssh $tty_option -p "$port" "$user@$host" -o StrictHostKeyChecking=no "$final_command"
+    else
+        ssh $tty_option -p "$port" "$user@$host" "$final_command"
+    fi
+}
+
+delete_connection() {
+    local alias_to_delete=$1; if [ -z "$alias_to_delete" ]; then list_connections; read -p "Alias a eliminar: " alias_to_delete; fi; if [ -z "$alias_to_delete" ]; then echo "Cancelado."; return 1; fi
+    grep -vE "^${alias_to_delete}\|" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"; mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+    echo "Conexión '$alias_to_delete' eliminada."
+}
+
+update_script() {
+    echo "Buscando actualizaciones..."
+    local remote_version
+    remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
+
+    if [ -z "$remote_version" ]; then
+        echo "No se pudo verificar la versión remota. Revisa tu conexión a internet."
+        return 1
+    fi
+    
+    if [ "$VERSION" == "$remote_version" ]; then
+        echo "Ya tienes la última versión instalada ($VERSION)."
+    else
+        echo "¡Nueva versión disponible! ($remote_version)"
+        read -p "¿Deseas actualizar ahora? (s/n): " choice
+        if [[ "$choice" =~ ^[sS]$ ]]; then
+            local install_script_url="$REPO_BASE_URL/install.sh"
+            local exec_cmd="curl -fsSL $install_script_url | sudo bash"
+            if $IS_TERMUX; then
+                exec_cmd="curl -fsSL $install_script_url | bash"
+            fi
+            
+            echo "Ejecutando el instalador..."
+            sh -c "$exec_cmd"
+            echo "Actualización completada. Por favor, reinicia el script."
+            exit 0
+        else
+            echo "Actualización cancelada."
+        fi
+    fi
+}
+
+# ... (El resto de las funciones de red: scp, tunnel, etc. van aquí) ...
+
+run_interactive_menu() {
+    (
+        local remote_version
+        remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt" 2>/dev/null)
+        if [ -n "$remote_version" ] && [ "$VERSION" != "$remote_version" ]; then
+            echo -e "\n\n\e[32mNueva versión ($remote_version) disponible. Ejecuta 'sshm update' para actualizar.\e[0m"
+        fi
+    ) &
+
+    while true; do
+        show_menu; read -p "Elige una opción: " choice
+        case $choice in
+            l|L) list_connections ;;
+            c|C) connect_to_host ;;
+            b|B) if $IS_TERMUX; then echo "Opción no válida."; else browse_sftp; fi ;;
+            a|A) add_connection ;;
+            e|E) edit_connection ;;
+            d|D) delete_connection ;;
+            u|U) update_script ;;
+            h|H) show_usage ;;
+            q|Q) echo "¡Hasta luego!"; exit 0 ;;
+            *) echo "Opción no válida.";;
+        esac
+    done
+}
 
 # --- PUNTO DE ENTRADA PRINCIPAL ---
 check_base_requirements
