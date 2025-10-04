@@ -48,15 +48,15 @@ main() {
     echo "Iniciando la instalación de SSH Manager..."
     
     # --- Preguntar por la ruta de configuración ---
-    local default_config_dir="$user_home/.config/ssh-manager"
-    # CORREGIDO: Leer directamente desde la terminal del usuario
-    read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty
-    config_dir=${config_dir:-$default_config_dir}
+    local config_dir="$user_home/.config/ssh-manager"
+    local connections_file
+    read -p "Introduce la ruta para guardar el archivo de conexiones [$config_dir/connections.txt]: " connections_file < /dev/tty
+    connections_file=${connections_file:-"$config_dir/connections.txt"}
     
     # Expandir tilde (~) si el usuario la introduce
-    eval config_dir="$config_dir"
+    eval connections_file="$connections_file"
     
-    echo "Las conexiones se guardarán en: $config_dir"
+    echo "Las conexiones se guardarán en: $connections_file"
     
     # Descargar el script principal
     echo "Descargando la última versión desde GitHub..."
@@ -67,19 +67,19 @@ main() {
     chmod +x "$INSTALL_DIR/$MAIN_CMD"
     ln -sf "$INSTALL_DIR/$MAIN_CMD" "$INSTALL_DIR/$ALIAS_CMD"
     
-    # --- Crear el directorio y el puntero de configuración ---
-    local pointer_file="$user_home/.sshm_config_path"
+    # --- Crear el directorio y el archivo de configuración central ---
+    local master_config_file="$config_dir/config"
 
     echo "Creando directorio de configuración..."
     # Ejecutar como el usuario original para crear el directorio en su home
     if [ "$EUID" -eq 0 ] && [ "$original_user" != "root" ]; then
-        sudo -u "$original_user" mkdir -p "$config_dir"
-        echo "Guardando la ruta de configuración en $pointer_file..."
-        sudo -u "$original_user" bash -c "echo '$config_dir' > '$pointer_file'"
+        sudo -u "$original_user" mkdir -p "$(dirname "$connections_file")"
+        sudo -u "$original_user" bash -c "echo \"CONNECTIONS_PATH='$connections_file'\" > \"$master_config_file\""
+        sudo -u "$original_user" bash -c "echo \"INSTALLED_DEPS=''\" >> \"$master_config_file\""
     else
-        mkdir -p "$config_dir"
-        echo "Guardando la ruta de configuración en $pointer_file..."
-        echo "$config_dir" > "$pointer_file"
+        mkdir -p "$(dirname "$connections_file")"
+        echo "CONNECTIONS_PATH='$connections_file'" > "$master_config_file"
+        echo "INSTALLED_DEPS=''" >> "$master_config_file"
     fi
 
     echo ""
