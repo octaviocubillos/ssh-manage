@@ -26,6 +26,21 @@ curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/
 curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh) | bash
 ```
 
+## 🗑️ Desinstalación
+
+Para desinstalar, simplemente ejecuta el siguiente comando:
+
+**Linux / macOS**
+```bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | sudo bash
+```
+
+**Termux (Android)**
+```bash
+curl -fsSL [https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh](https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/uninstall.sh) | bash
+```
+
+
 ## 💻 Uso
 
 Una vez instalado, puedes llamarlo con `ssh-manage` o el atajo `sshm`.
@@ -80,6 +95,5 @@ El formato es un archivo de texto simple donde cada línea es una conexión y lo
 
 ```
 alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|
-
 
 ```

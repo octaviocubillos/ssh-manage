@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v5.2
+#                 GESTOR DE CONEXIONES SSH v5.2.1
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH.
