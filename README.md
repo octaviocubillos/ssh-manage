@@ -1,4 +1,4 @@
-# SSH Manager v1.0.1
+# SSH Manager v1.0.2
 
 Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar, gestionar y conectar a tus servidores de forma rápida y eficiente, todo desde la línea de comandos.
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v1.0.1 (Bash)
+#                 GESTOR DE CONEXIONES SSH v1.0.2 (Bash)
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH, con un menú
@@ -11,7 +11,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.1"
+VERSION="1.0.2"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -306,9 +306,13 @@ update_script() {
     if [ "$VERSION" == "$remote_version" ]; then echo "Ya tienes la última versión instalada ($VERSION)."; else
         echo "¡Nueva versión disponible! ($remote_version)"; read -p "¿Deseas actualizar ahora? (s/n): " choice
         if [[ "$choice" =~ ^[sS]$ ]]; then
-            local install_script_url="$REPO_BASE_URL/install.sh"; local exec_cmd="curl -fsSL $install_script_url | sudo bash"
+            local install_script_url="$REPO_BASE_URL/install.sh"
+            local exec_cmd="curl -fsSL $install_script_url | $SUDO_CMD bash"
             if $IS_TERMUX; then exec_cmd="curl -fsSL $install_script_url | bash"; fi
-            echo "Ejecutando el instalador..."; sh -c "$exec_cmd"; echo "Actualización completada. Por favor, reinicia el script."; exit 0
+            echo "Ejecutando el instalador..."
+            sh -c "$exec_cmd"
+            echo "Actualización completada. Por favor, reinicia el script."
+            exit 0
         else echo "Actualización cancelada."; fi
     fi
 }
