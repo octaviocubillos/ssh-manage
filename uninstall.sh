@@ -44,6 +44,11 @@ main() {
         deps_log="$config_dir/installed_deps.log"
     fi
 
+    local SUDO_CMD="sudo"
+    if [ "$EUID" -eq 0 ]; then
+        SUDO_CMD=""
+    fi
+
     if [[ -n "$PREFIX" ]]; then INSTALL_DIR="$PREFIX/bin"; else INSTALL_DIR="/usr/local/bin"; if [ "$EUID" -ne 0 ]; then echo "Se necesita sudo."; exit 1; fi; fi
 
     echo "Iniciando la desinstalación de SSH Manager..."
@@ -57,12 +62,12 @@ main() {
             local uninstall_cmd=""
             local packages=$(tr '\n' ' ' < "$deps_log")
             if command -v pkg &> /dev/null; then uninstall_cmd="pkg uninstall -y $packages"
-            elif command -v apt-get &> /dev/null; then uninstall_cmd="sudo apt-get purge -y $packages"
-            elif command -v dnf &> /dev/null; then uninstall_cmd="sudo dnf remove -y $packages"
-            elif command -v yum &> /dev/null; then uninstall_cmd="sudo yum remove -y $packages"
-            elif command -v pacman &> /dev/null; then uninstall_cmd="sudo pacman -Rns --noconfirm $packages"
-            elif command -v zypper &> /dev/null; then uninstall_cmd="sudo zypper --non-interactive remove $packages"
-            elif command -v apk &> /dev/null; then uninstall_cmd="sudo apk del $packages"
+            elif command -v apt-get &> /dev/null; then uninstall_cmd="$SUDO_CMD apt-get purge -y $packages"
+            elif command -v dnf &> /dev/null; then uninstall_cmd="$SUDO_CMD dnf remove -y $packages"
+            elif command -v yum &> /dev/null; then uninstall_cmd="$SUDO_CMD yum remove -y $packages"
+            elif command -v pacman &> /dev/null; then uninstall_cmd="$SUDO_CMD pacman -Rns --noconfirm $packages"
+            elif command -v zypper &> /dev/null; then uninstall_cmd="$SUDO_CMD zypper --non-interactive remove $packages"
+            elif command -v apk &> /dev/null; then uninstall_cmd="$SUDO_CMD apk del $packages"
             elif command -v brew &> /dev/null; then uninstall_cmd="brew uninstall $packages"; fi
             
             if [ -n "$uninstall_cmd" ]; then

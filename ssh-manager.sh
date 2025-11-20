@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # ==============================================================================
-#                 GESTOR DE CONEXIONES SSH v1.0.2 (Bash)
+#                 GESTOR DE CONEXIONES SSH v1.0.3 (Bash)
+#                        BY OTON
 # ==============================================================================
 #
 #   Un script de Bash para gestionar múltiples conexiones SSH, con un menú
@@ -11,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.2"
+VERSION="1.0.3"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
