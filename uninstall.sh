@@ -34,10 +34,15 @@ main() {
     if [ -f "$master_config_file" ]; then
         source "$master_config_file"
         config_dir=$(dirname "$CONNECTIONS_PATH")
+        if [ -n "$DEPS_LOG_PATH" ]; then
+            deps_log="$DEPS_LOG_PATH"
+        else
+            deps_log="$config_dir/installed_deps.log"
+        fi
     else
         config_dir="$user_home/.config/ssh-manager"
+        deps_log="$config_dir/installed_deps.log"
     fi
-    deps_log="$config_dir/installed_deps.log"
 
     if [[ -n "$PREFIX" ]]; then INSTALL_DIR="$PREFIX/bin"; else INSTALL_DIR="/usr/local/bin"; if [ "$EUID" -ne 0 ]; then echo "Se necesita sudo."; exit 1; fi; fi
 

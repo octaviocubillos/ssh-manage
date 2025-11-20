@@ -74,10 +74,14 @@ main() {
     if [ "$(whoami)" == "$original_user" ]; then
         mkdir -p "$config_dir"
         echo "CONNECTIONS_PATH='$config_dir/connections.txt'" > "$master_config_file"
+        echo "DEPS_LOG_PATH='$config_dir/installed_deps.log'" >> "$master_config_file"
+        echo "TUNNELS_PID_PATH='$config_dir/tunnels.pid'" >> "$master_config_file"
         touch "$config_dir/installed_deps.log"
     else
         sudo -u "$original_user" mkdir -p "$config_dir"
         sudo -u "$original_user" bash -c "echo \"CONNECTIONS_PATH='$config_dir/connections.txt'\" > '$master_config_file'"
+        sudo -u "$original_user" bash -c "echo \"DEPS_LOG_PATH='$config_dir/installed_deps.log'\" >> '$master_config_file'"
+        sudo -u "$original_user" bash -c "echo \"TUNNELS_PID_PATH='$config_dir/tunnels.pid'\" >> '$master_config_file'"
         sudo -u "$original_user" touch "$config_dir/installed_deps.log"
     fi
 
