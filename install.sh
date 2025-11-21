@@ -34,6 +34,8 @@ main() {
 
     if [ "$original_user" == "root" ]; then
         user_home="/root"
+    elif [ -n "$HOME" ]; then
+        user_home="$HOME"
     else
         user_home=$(getent passwd "$original_user" | cut -d: -f6)
     fi
