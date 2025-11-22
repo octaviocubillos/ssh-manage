@@ -1,6 +1,14 @@
-# SSH Manager v1.0.3 BY OTON
+# SSH Manager v1.0.4
 
-Un gestor de conexiones SSH simple y potente escrito en Bash. Te permite guardar, gestionar y conectar a tus servidores de forma rápida y eficiente, todo desde la línea de comandos.
+**SSH Manager** es una herramienta de línea de comandos (CLI) escrita en Bash para gestionar tus conexiones SSH de forma fácil y rápida. Olvídate de recordar IPs, usuarios y rutas de claves; con este script puedes guardar, editar, listar y conectarte a tus servidores con un menú interactivo.
+
+## Novedades v1.0.4
+
+- **Soporte JSON**: Almacenamiento de conexiones en formato JSON para mayor robustez.
+- **Dependencias**: Se añade `jq` como dependencia obligatoria (se instala automáticamente).
+- **Menú Inteligente**: Las opciones que requieren conexiones se deshabilitan si no hay ninguna guardada.
+- **Ajustes**: Nueva opción para ver la configuración actual sin editarla.
+- **Correcciones**: Validación de alias vacío y mejoras en la interfaz.
 
 ## ✨ Características
 
@@ -132,9 +140,20 @@ sshm delete mi-servidor
 El archivo de configuración se crea automáticamente en la ruta que elijas durante la instalación (por defecto `~/.config/ssh-manager/`).
 
 - **`config`**: Almacena la ruta a tu archivo de conexiones y un registro de las dependencias que ha instalado el script.
-- **`connections.txt`**: El archivo de texto simple donde cada línea es una conexión y los campos están separados por `|`:
-  ```
-  alias|host|usuario|puerto|ruta_clave|contraseña|directorio_remoto|comando_defecto|
+- **`connections.json`**: El archivo JSON donde se almacenan todas las conexiones.
+  ```json
+  [
+    {
+      "alias": "mi-servidor",
+      "host": "192.168.1.10",
+      "user": "usuario",
+      "port": "22",
+      "key": "/ruta/a/id_rsa",
+      "pass": "secreto",
+      "remote_dir": "/var/www",
+      "cmd": "htop"
+    }
+  ]
   ```
 
 Puedes cambiar la ubicación de este archivo desde el menú "Ajustes" dentro de la aplicación.
