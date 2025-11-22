@@ -33,6 +33,10 @@ main() {
     fi
 
     user_home=$(getent passwd "$original_user" | cut -d: -f6)
+    if [ -z "$user_home" ]; then
+        user_home="$HOME"
+    fi
+
 
     # Detección del entorno (Termux o estándar)
     if [[ -n "$PREFIX" ]]; then
