@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.6"
+VERSION="1.0.7"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -151,9 +151,121 @@ ensure_dependency() {
 }
 
 check_base_requirements() {
-    ensure_dependency "tput" "ncurses-bin" || ensure_dependency "tput" "ncurses" || ensure_dependency "tput" "ncurses-utils"
-    ensure_dependency "ssh" "openssh-client" || ensure_dependency "ssh" "openssh"
-    ensure_dependency "jq"
+    local deps=("tput" "ssh" "jq" "openssl" "sshpass")
+    local missing_deps=()
+
+    # Check for missing dependencies
+    for dep in "${deps[@]}"; do
+        local check_cmd="$dep"
+        # Termux specific check for openssl
+        if [[ -n "$PREFIX" ]] && [ "$dep" == "openssl" ]; then check_cmd="openssl-tool"; fi
+        
+        if ! command -v "$dep" &> /dev/null; then
+            # Handle tput/ncurses variants
+            if [ "$dep" == "tput" ]; then
+                if command -v ncurses-bin &> /dev/null || command -v ncurses &> /dev/null || command -v ncurses-utils &> /dev/null; then
+                    continue
+                fi
+            fi
+            # Handle ssh variants
+            if [ "$dep" == "ssh" ]; then
+                if command -v openssh-client &> /dev/null || command -v openssh &> /dev/null; then
+                    continue
+                fi
+            fi
+            missing_deps+=("$dep")
+        fi
+    done
+
+    if [ ${#missing_deps[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    clear
+    echo "=========================================="
+    echo "      DEPENDENCIAS FALTANTES"
+    echo "=========================================="
+    echo "Para funcionar correctamente, SSH Manager necesita instalar:"
+    echo ""
+    for dep in "${missing_deps[@]}"; do
+        echo " - $dep"
+    done
+    echo ""
+    echo "=========================================="
+    read -p "¿Deseas instalarlas ahora? (s/n): " confirm
+
+    if [[ ! "$confirm" =~ ^[sS]$ ]]; then
+        echo "Error: No se pueden satisfacer las dependencias. Saliendo."
+        exit 1
+    fi
+
+    # Refresh sudo credentials if needed to avoid prompt during spinner
+    if [ "$EUID" -ne 0 ] && [ -z "$PREFIX" ]; then
+        sudo -v
+    fi
+
+    echo -n "Instalando...  "
+    show_spinner &
+    local spinner_pid=$!
+
+    local install_cmd=""
+    local sudo_prefix=""
+    if [ "$EUID" -ne 0 ] && [ -z "$PREFIX" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    if [[ -n "$PREFIX" ]]; then
+        install_cmd="pkg install -y"
+    elif command -v apt-get &> /dev/null; then
+        install_cmd="$sudo_prefix apt-get update -y && $sudo_prefix apt-get install -y"
+    elif command -v dnf &> /dev/null; then
+        install_cmd="$sudo_prefix dnf install -y"
+    elif command -v yum &> /dev/null; then
+        install_cmd="$sudo_prefix yum install -y"
+    elif command -v pacman &> /dev/null; then
+        install_cmd="$sudo_prefix pacman -Syu --noconfirm"
+    elif command -v zypper &> /dev/null; then
+        install_cmd="$sudo_prefix zypper --non-interactive install"
+    elif command -v apk &> /dev/null; then
+        install_cmd="$sudo_prefix apk add --no-cache"
+    elif command -v brew &> /dev/null; then
+        install_cmd="brew install"
+    else
+        kill $spinner_pid &>/dev/null
+        wait $spinner_pid 2>/dev/null
+        echo ""
+        echo "Error: No se pudo detectar el gestor de paquetes. Instala manualmente: ${missing_deps[*]}"
+        exit 1
+    fi
+
+    # Termux specific package name adjustments
+    if [[ -n "$PREFIX" ]]; then
+        missing_deps=("${missing_deps[@]/openssl/openssl-tool}")
+    fi
+
+    # Run installation silently
+    if eval "$install_cmd ${missing_deps[*]}" > /dev/null 2>&1; then
+        kill $spinner_pid &>/dev/null
+        wait $spinner_pid 2>/dev/null
+        printf "\b\bListo.\n"
+    else
+        kill $spinner_pid &>/dev/null
+        wait $spinner_pid 2>/dev/null
+        printf "\b\bFalló.\n"
+        echo "Error al instalar dependencias. Intenta instalarlas manualmente."
+        exit 1
+    fi
+    
+    # Verify installation
+    for dep in "${missing_deps[@]}"; do
+         # Re-check logic simplified for verification
+         if ! command -v "$dep" &> /dev/null && ! command -v "${dep%-tool}" &> /dev/null; then
+             echo "Advertencia: Parece que $dep no se instaló correctamente."
+         fi
+    done
+    
+    echo "Dependencias instaladas. Continuando..."
+    sleep 2
 }
 
 # --- FUNCIONES DE LA APLICACIÓN ---
@@ -1269,7 +1381,7 @@ main() {
             stop-tunnel|-st) stop_tunnel "$1" ;;
             *) 
                 # Check if it's an alias directly
-                if grep -qE "^${COMMAND}\|" "$CONFIG_FILE"; then
+                if jq -e --arg alias "$COMMAND" '.[] | select(.alias == $alias)' "$CONFIG_FILE" > /dev/null 2>&1; then
                     connect_to_host "$COMMAND" "$@"
                 else
                     echo "Comando desconocido: $COMMAND"

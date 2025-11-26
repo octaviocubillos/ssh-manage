@@ -21,6 +21,76 @@ ALIAS_CMD="sshm"
 
 # --- LÓGICA DE INSTALACIÓN ---
 
+install_dependencies() {
+    echo "Verificando dependencias..."
+    local deps=("jq" "openssl" "sshpass")
+    local missing_deps=()
+
+    # Check for missing dependencies
+    for dep in "${deps[@]}"; do
+        local check_cmd="$dep"
+        # Termux specific check for openssl
+        if [[ -n "$PREFIX" ]] && [ "$dep" == "openssl" ]; then check_cmd="openssl-tool"; fi
+        
+        if ! command -v "$dep" &> /dev/null; then
+            missing_deps+=("$dep")
+        fi
+    done
+
+    # Optional dependencies (don't fail if missing, but try to install)
+    if ! command -v "sshfs" &> /dev/null; then missing_deps+=("sshfs"); fi
+    if ! command -v "mc" &> /dev/null; then missing_deps+=("mc"); fi
+
+    if [ ${#missing_deps[@]} -eq 0 ]; then
+        echo "Todas las dependencias están instaladas."
+        return 0
+    fi
+
+    echo "Faltan las siguientes dependencias: ${missing_deps[*]}"
+    echo "Intentando instalar..."
+
+    local install_cmd=""
+    local sudo_prefix=""
+    if [ "$EUID" -ne 0 ] && [ -z "$PREFIX" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    if [[ -n "$PREFIX" ]]; then
+        install_cmd="pkg install -y"
+    elif command -v apt-get &> /dev/null; then
+        install_cmd="$sudo_prefix apt-get update -y && $sudo_prefix apt-get install -y"
+    elif command -v dnf &> /dev/null; then
+        install_cmd="$sudo_prefix dnf install -y"
+    elif command -v yum &> /dev/null; then
+        install_cmd="$sudo_prefix yum install -y"
+        # Special case for sshfs on yum/centos
+        if [[ " ${missing_deps[*]} " =~ " sshfs " ]]; then
+             $sudo_prefix yum install -y epel-release
+             missing_deps=("${missing_deps[@]/sshfs/fuse-sshfs}")
+        fi
+    elif command -v pacman &> /dev/null; then
+        install_cmd="$sudo_prefix pacman -Syu --noconfirm"
+    elif command -v zypper &> /dev/null; then
+        install_cmd="$sudo_prefix zypper --non-interactive install"
+    elif command -v apk &> /dev/null; then
+        install_cmd="$sudo_prefix apk add --no-cache"
+    elif command -v brew &> /dev/null; then
+        install_cmd="brew install"
+    else
+        echo "Advertencia: No se pudo detectar el gestor de paquetes. Por favor instala manualmente: ${missing_deps[*]}"
+        return 1
+    fi
+
+    # Termux specific package name adjustments
+    if [[ -n "$PREFIX" ]]; then
+        missing_deps=("${missing_deps[@]/openssl/openssl-tool}")
+    fi
+
+    echo "Ejecutando: $install_cmd ${missing_deps[*]}"
+    eval "$install_cmd ${missing_deps[*]}"
+}
+
+
 main() {
     local INSTALL_DIR
     local original_user
@@ -51,6 +121,9 @@ main() {
     fi
 
     echo "Iniciando la instalación de SSH Manager..."
+    
+    install_dependencies
+    
     
     local default_config_dir="$user_home/.config/ssh-manager"
     read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty
