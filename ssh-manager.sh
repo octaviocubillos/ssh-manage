@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.7"
+VERSION="1.0.8"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false

@@ -21,9 +21,17 @@ ALIAS_CMD="sshm"
 
 # --- LÓGICA DE INSTALACIÓN ---
 
+show_spinner() {
+    if ! command -v "tput" &> /dev/null; then while true; do sleep 1; done; return; fi
+    local -r FRAMES='|/-\'; local i=0; tput civis; trap 'tput cnorm' EXIT
+    while true; do printf "\b%s" "${FRAMES:i++%${#FRAMES}:1}"; sleep 0.1; done
+}
+
+
+
 install_dependencies() {
     echo "Verificando dependencias..."
-    local deps=("jq" "openssl" "sshpass")
+    local deps=("jq" "openssl" "sshpass" "curl")
     local missing_deps=()
 
     # Check for missing dependencies
@@ -47,35 +55,39 @@ install_dependencies() {
     fi
 
     echo "Faltan las siguientes dependencias: ${missing_deps[*]}"
-    echo "Intentando instalar..."
 
-    local install_cmd=""
+    local update_cmd=""
+    local install_base_cmd=""
     local sudo_prefix=""
     if [ "$EUID" -ne 0 ] && [ -z "$PREFIX" ]; then
         sudo_prefix="sudo"
     fi
 
     if [[ -n "$PREFIX" ]]; then
-        install_cmd="pkg install -y"
+        install_base_cmd="pkg install -y"
     elif command -v apt-get &> /dev/null; then
-        install_cmd="$sudo_prefix apt-get update -y && $sudo_prefix apt-get install -y"
+        update_cmd="$sudo_prefix apt-get update -y"
+        install_base_cmd="$sudo_prefix apt-get install -y"
     elif command -v dnf &> /dev/null; then
-        install_cmd="$sudo_prefix dnf install -y"
+        install_base_cmd="$sudo_prefix dnf install -y"
     elif command -v yum &> /dev/null; then
-        install_cmd="$sudo_prefix yum install -y"
+        install_base_cmd="$sudo_prefix yum install -y"
         # Special case for sshfs on yum/centos
         if [[ " ${missing_deps[*]} " =~ " sshfs " ]]; then
-             $sudo_prefix yum install -y epel-release
+             $sudo_prefix yum install -y epel-release > /dev/null 2>&1
              missing_deps=("${missing_deps[@]/sshfs/fuse-sshfs}")
         fi
     elif command -v pacman &> /dev/null; then
-        install_cmd="$sudo_prefix pacman -Syu --noconfirm"
+        update_cmd="$sudo_prefix pacman -Sy --noconfirm"
+        install_base_cmd="$sudo_prefix pacman -S --noconfirm"
     elif command -v zypper &> /dev/null; then
-        install_cmd="$sudo_prefix zypper --non-interactive install"
+        install_base_cmd="$sudo_prefix zypper --non-interactive install"
     elif command -v apk &> /dev/null; then
-        install_cmd="$sudo_prefix apk add --no-cache"
+        update_cmd="$sudo_prefix apk update"
+        install_base_cmd="$sudo_prefix apk add --no-cache"
     elif command -v brew &> /dev/null; then
-        install_cmd="brew install"
+        update_cmd="brew update"
+        install_base_cmd="brew install"
     else
         echo "Advertencia: No se pudo detectar el gestor de paquetes. Por favor instala manualmente: ${missing_deps[*]}"
         return 1
@@ -86,8 +98,27 @@ install_dependencies() {
         missing_deps=("${missing_deps[@]/openssl/openssl-tool}")
     fi
 
-    echo "Ejecutando: $install_cmd ${missing_deps[*]}"
-    eval "$install_cmd ${missing_deps[*]}"
+    local final_cmd=""
+    if [ -n "$update_cmd" ]; then
+        final_cmd="$update_cmd && "
+    fi
+    final_cmd="${final_cmd}$install_base_cmd ${missing_deps[*]}"
+
+    echo -n "Instalando dependencias...  "
+    show_spinner &
+    local spinner_pid=$!
+    
+    if eval "$final_cmd" > /dev/null 2>&1 < /dev/null; then
+        kill $spinner_pid &>/dev/null || true
+        wait $spinner_pid 2>/dev/null || true
+        printf "\b\bListo.\n"
+    else
+        kill $spinner_pid &>/dev/null || true
+        wait $spinner_pid 2>/dev/null || true
+        printf "\b\bFalló.\n"
+        echo "Error al instalar dependencias."
+        return 1
+    fi
 }
 
 
@@ -126,7 +157,17 @@ main() {
     
     
     local default_config_dir="$user_home/.config/ssh-manager"
-    read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty
+    local config_dir=""
+    
+    if [ -c /dev/tty ]; then
+        if read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty; then
+            :
+        else
+             echo "Usando directorio por defecto."
+        fi
+    else
+        echo "Entorno no interactivo. Usando directorio por defecto."
+    fi
     config_dir=${config_dir:-$default_config_dir}
     
     # Expandir tilde (~) si el usuario la introduce
@@ -159,6 +200,11 @@ main() {
     fi
 
     echo ""; echo "¡Instalación completada con éxito!"
-    echo "Usa 'sshm' o 'ssh-manage' para empezar."
+    echo "======================================================="
+    echo "  Para ejecutar SSH Manager, usa el comando:"
+    echo "      sshm"
+    echo "  o"
+    echo "      ssh-manage"
+    echo "======================================================="
 }
 main
