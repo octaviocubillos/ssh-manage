@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.9"
+VERSION="1.0.10"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -68,7 +68,7 @@ for arg in "$@"; do
 done
 set -- "${args[@]}"
 
-RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d" "update" "-u" "scp" "-s" "tunnel" "-t" "reverse-tunnel" "-rt" "help" "-h" "version" "-v" "list-tunnels" "-lt" "stop-tunnel" "-st")
+RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d" "update" "-u" "scp" "-s" "tunnel" "-t" "reverse-tunnel" "-rt" "help" "-h" "version" "-v" "list-tunnels" "-lt" "stop-tunnel" "-st" "export" "-x")
 
 # --- VERIFICACIÓN DE DEPENDENCIAS ---
 
@@ -293,6 +293,7 @@ show_usage() {
     echo ""
     echo "Otros:"
     printf "  %-35s %s\n" "update, -u" "Busca y aplica actualizaciones."
+    printf "  %-35s %s\n" "export, -x" "Exporta las conexiones a ~/.ssh/config."
     printf "  %-35s %s\n" "version,-v" "Muestra la versión actual."
     printf "  %-35s %s\n" "help,   -h" "Muestra esta ayuda."
     echo ""
@@ -1242,6 +1243,69 @@ list_connections() {
     echo ""
 }
 
+export_ssh_config() {
+    local ssh_dir="$HOME/.ssh"
+    local ssh_config_file="$ssh_dir/config"
+    local config_file="$CONFIG_FILE"
+    
+    mkdir -p "$ssh_dir"
+    chmod 700 "$ssh_dir"
+    touch "$ssh_config_file"
+    chmod 600 "$ssh_config_file"
+
+    local marker_start="### BEGIN SSH MANAGER CONFIG ###"
+    local marker_end="### END SSH MANAGER CONFIG ###"
+
+    # Remove existing managed block
+    if grep -q "^$marker_start" "$ssh_config_file"; then
+        sed -i "/^$marker_start/,/^$marker_end/d" "$ssh_config_file"
+    fi
+
+    # Read active connections
+    if [ ! -s "$config_file" ] || [ "$(jq 'length' "$config_file" 2>/dev/null)" -eq 0 ]; then
+        echo "No hay conexiones guardadas para exportar."
+        return
+    fi
+    
+    # Check if there's anything else in the config file to append a newline nicely
+    if [ -s "$ssh_config_file" ] && [ -n "$(tail -c 1 "$ssh_config_file")" ]; then
+        echo "" >> "$ssh_config_file"
+    fi
+
+    echo "Exportando conexiones a $ssh_config_file..."
+
+    # Append new managed block
+    {
+        echo "$marker_start"
+        echo "# Generado automáticamente por SSH Manager."
+        echo "# No edites este bloque manualmente, será sobreescrito en la próxima exportación."
+        
+        jq -r '.[] | "\(.alias)|\(.host)|\(.user)|\(.port)|\(.key)|\(.jump)"' "$config_file" | \
+        while IFS='|' read -r alias host user port key jump; do
+            if [ -z "$alias" ] || [ "$alias" == "null" ]; then continue; fi
+
+            echo ""
+            echo "Host $alias"
+            echo "    HostName $host"
+            echo "    User $user"
+            if [ "$port" != "22" ] && [ "$port" != "null" ]; then
+                echo "    Port $port"
+            fi
+            if [ -n "$key" ] && [ "$key" != "null" ]; then
+                echo "    IdentityFile $key"
+            fi
+            if [ -n "$jump" ] && [ "$jump" != "null" ]; then
+                echo "    ProxyJump $jump"
+            fi
+        done
+        
+        echo ""
+        echo "$marker_end"
+    } >> "$ssh_config_file"
+    
+    echo "¡Configuraciones exportadas exitosamente!"
+}
+
 run_tunnels_menu() {
     local options=("Listar túneles activos" "Detener túnel" "Crear túnel local" "Crear túnel reverso" "Volver")
     local selected=0
@@ -1325,7 +1389,7 @@ run_tunnels_menu() {
 }
 
 run_settings_menu() {
-    local options=("Ver configuración actual" "Archivo de conexiones" "Archivo de logs (deps)" "Archivo PID túneles" "Actualizar script" "Volver")
+    local options=("Ver configuración actual" "Archivo de conexiones" "Archivo de logs (deps)" "Archivo PID túneles" "Exportar conexiones a ~/.ssh/config" "Actualizar script" "Volver")
     local selected=0
 
     while true; do
@@ -1418,6 +1482,7 @@ run_settings_menu() {
                             read -p "Presiona Enter para continuar..."
                         fi
                         ;;
+                    "Exportar conexiones a ~/.ssh/config") export_ssh_config; read -p "Presiona Enter para continuar..." ;;
                     "Actualizar script") update_script; read -p "Presiona Enter para continuar..." ;;
                     "Volver") return ;;
                 esac
@@ -1537,6 +1602,7 @@ main() {
             connect|-c) connect_to_host "$1" "$2" ;;
             browse|-b) browse_sftp "$1" ;;
             delete|-d) delete_connection "$1" ;;
+            export|-x) export_ssh_config ;;
             update|-u) update_script ;;
             version|-v) show_version ;;
             help|-h) show_usage ;;

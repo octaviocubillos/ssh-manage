@@ -85,6 +85,7 @@ Una vez instalado, puedes llamarlo con `ssh-manage` o el atajo `sshm`.
 | `reverse-tunnel` | `-rt` | Crea un túnel SSH reverso.                                 |
 | `list-tunnels`   | `-lt` | Lista los túneles activos en segundo plano.                |
 | `stop-tunnel`    | `-st` | Detiene un túnel activo (interactivo si no se da PID).     |
+| `export`         | `-x`  | Exporta las conexiones guardadas al archivo `~/.ssh/config`. |
 | `update`         | `-u`  | Busca y aplica actualizaciones para la herramienta.        |
 | `help`           | `-h`  | Muestra la ayuda.                                          |
 | `version`        | `-v`  | Muestra la versión actual.                                 |
