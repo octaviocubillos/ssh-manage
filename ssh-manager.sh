@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.8"
+VERSION="1.0.9"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -419,6 +419,7 @@ add_connection() {
 
     read -p "Directorio remoto inicial (opcional): " remote_dir
     read -p "Comando a ejecutar al conectar (opcional): " cmd
+    read -p "Host de salto (alias, opcional): " jump
     
     # Add to JSON
     local temp_file
@@ -432,7 +433,8 @@ add_connection() {
        --arg pass "$pass" \
        --arg remote_dir "$remote_dir" \
        --arg cmd "$cmd" \
-       '. + [{alias: $alias, host: $host, user: $user, port: $port, key: $key, pass: $pass, remote_dir: $remote_dir, cmd: $cmd}]' \
+       --arg jump "$jump" \
+       '. + [{alias: $alias, host: $host, user: $user, port: $port, key: $key, pass: $pass, remote_dir: $remote_dir, cmd: $cmd, jump: $jump}]' \
        "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
 
     echo "Conexión '$alias' guardada."
@@ -449,21 +451,22 @@ edit_connection() {
 
     # Get connection data from JSON
     local connection_data
-    connection_data=$(jq -r --arg alias "$alias_to_edit" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)"' "$CONFIG_FILE")
+    connection_data=$(jq -r --arg alias "$alias_to_edit" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)|\(.jump)"' "$CONFIG_FILE")
     
     if [ -z "$connection_data" ]; then echo "Error: Alias no encontrado."; return 1; fi
     
-    IFS='|' read -r old_host old_user old_port old_key old_pass old_remote_dir old_cmd <<< "$connection_data"
+    IFS='|' read -r old_host old_user old_port old_key old_pass old_remote_dir old_cmd old_jump <<< "$connection_data"
     
     # Handle nulls
     if [ "$old_key" == "null" ]; then old_key=""; fi
     if [ "$old_pass" == "null" ]; then old_pass=""; fi
     if [ "$old_remote_dir" == "null" ]; then old_remote_dir=""; fi
     if [ "$old_cmd" == "null" ]; then old_cmd=""; fi
+    if [ "$old_jump" == "null" ]; then old_jump=""; fi
 
     if [ -n "$field_to_edit" ]; then
         # Single field edit mode (kept for potential CLI usage, though user wants wizard)
-        local host="$old_host" user="$old_user" port="$old_port" key="$old_key" pass="$old_pass" remote_dir="$old_remote_dir" cmd="$old_cmd"
+        local host="$old_host" user="$old_user" port="$old_port" key="$old_key" pass="$old_pass" remote_dir="$old_remote_dir" cmd="$old_cmd" jump="$old_jump"
         
         case "$field_to_edit" in
             host) read -p "Nuevo Host [$host]: " new_value; host=${new_value:-$host} ;;
@@ -505,6 +508,7 @@ edit_connection() {
                 ;;
             dir) read -p "Nuevo Directorio [$remote_dir]: " new_value; remote_dir=${new_value:-$remote_dir} ;;
             cmd) read -p "Nuevo Comando [$cmd]: " new_value; cmd=${new_value:-$cmd} ;;
+            jump) read -p "Nuevo Host de salto [$jump]: " new_value; jump=${new_value:-$jump} ;;
             *) echo "Campo inválido."; return 1 ;;
         esac
     else
@@ -536,6 +540,10 @@ edit_connection() {
         # Command
         read -p "Nuevo Comando [$old_cmd]: " cmd
         cmd=${cmd:-$old_cmd}
+
+        # Jump
+        read -p "Nuevo Host de salto (alias) [$old_jump]: " jump
+        jump=${jump:-$old_jump}
 
         # Auth
         local key="$old_key"
@@ -591,7 +599,8 @@ edit_connection() {
        --arg pass "$pass" \
        --arg remote_dir "$remote_dir" \
        --arg cmd "$cmd" \
-       'map(if .alias == $alias then {alias: $alias, host: $host, user: $user, port: $port, key: $key, pass: $pass, remote_dir: $remote_dir, cmd: $cmd} else . end)' \
+       --arg jump "$jump" \
+       'map(if .alias == $alias then {alias: $alias, host: $host, user: $user, port: $port, key: $key, pass: $pass, remote_dir: $remote_dir, cmd: $cmd, jump: $jump} else . end)' \
        "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
        
     echo "Conexión actualizada."
@@ -608,17 +617,18 @@ connect_to_host() {
 
     # Get connection data from JSON
     local connection_data
-    connection_data=$(jq -r --arg alias "$alias_to_connect" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)"' "$CONFIG_FILE")
+    connection_data=$(jq -r --arg alias "$alias_to_connect" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)|\(.jump)"' "$CONFIG_FILE")
     
     if [ -z "$connection_data" ]; then echo "Error: Alias no encontrado."; return 1; fi
     
-    IFS='|' read -r host user port key pass remote_dir default_cmd <<< "$connection_data"
+    IFS='|' read -r host user port key pass remote_dir default_cmd jump <<< "$connection_data"
     
     # Handle nulls
     if [ "$key" == "null" ]; then key=""; fi
     if [ "$pass" == "null" ]; then pass=""; fi
     if [ "$remote_dir" == "null" ]; then remote_dir=""; fi
     if [ "$default_cmd" == "null" ]; then default_cmd=""; fi
+    if [ "$jump" == "null" ]; then jump=""; fi
 
     local command_to_run="${remote_command:-$default_cmd}"
     
@@ -653,13 +663,64 @@ connect_to_host() {
     local tty_option=""
     if [ -n "$final_command" ]; then tty_option="-t"; fi
 
+    local jump_args=""
+    local jump_sshpass_cmd=""
+    
+    if [ -n "$jump" ]; then
+        local jump_data
+        jump_data=$(jq -r --arg alias "$jump" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+        if [ -n "$jump_data" ]; then
+            IFS='|' read -r j_host j_user j_port j_key j_pass <<< "$jump_data"
+            
+            local j_cmd=""
+            
+            # Handle jump host password decryption
+            local j_decrypted_pass=""
+            if [[ "$j_pass" == enc:* ]]; then
+                ensure_dependency "openssl" || return 1
+                # We ask for the jump master password if it's encrypted
+                read -s -p "Palabra clave para salto ($jump): " j_keyword; echo ""
+                local j_encrypted_data=${j_pass#enc:}
+                j_decrypted_pass=$(echo "$j_encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$j_keyword" 2>/dev/null)
+                if [ -z "$j_decrypted_pass" ]; then echo "Error de desencriptación para el salto."; return 1; fi
+            elif [ -n "$j_pass" ] && [ "$j_pass" != "null" ]; then
+                j_decrypted_pass="$j_pass"
+            fi
+
+            if [ -n "$j_decrypted_pass" ]; then
+                ensure_dependency "sshpass" || return 1
+                # Inject sshpass into the jump command itself
+                j_cmd="sshpass -p '$j_decrypted_pass' ssh -o StrictHostKeyChecking=no"
+            else
+                j_cmd="ssh -o StrictHostKeyChecking=no"
+            fi
+            
+            # Handle jump host port
+            if [ -n "$j_port" ] && [ "$j_port" != "22" ] && [ "$j_port" != "null" ]; then
+                j_cmd+=" -p $j_port"
+            fi
+
+            # Handle jump host key
+            if [ -n "$j_key" ] && [ "$j_key" != "null" ]; then
+                j_cmd+=" -i $j_key"
+            fi
+            
+            # Use ProxyCommand instead of -J for better sshpass compatibility
+            jump_args="-o ProxyCommand=\"$j_cmd -W %h:%p $j_user@$j_host\""
+        else
+            echo "Advertencia: Alias de salto '$jump' no encontrado en la configuración."
+        fi
+    fi
+
     if [ -n "$key" ]; then
-        ssh $VERBOSE_FLAG $tty_option -i "$key" -p "$port" "$user@$host" "$final_command"
+        eval "ssh $VERBOSE_FLAG $tty_option $jump_args -i \"$key\" -p \"$port\" \"$user@$host\" \"$final_command\""
     elif [ -n "$decrypted_pass" ]; then
         ensure_dependency "sshpass" || return 1
-        sshpass -p "$decrypted_pass" ssh $VERBOSE_FLAG $tty_option -p "$port" "$user@$host" -o StrictHostKeyChecking=no "$final_command"
+        export SSHPASS="$decrypted_pass"
+        eval "sshpass -e ssh $VERBOSE_FLAG $tty_option $jump_args -p \"$port\" \"$user@$host\" -o StrictHostKeyChecking=no \"$final_command\""
+        unset SSHPASS
     else
-        ssh $VERBOSE_FLAG $tty_option -p "$port" "$user@$host" "$final_command"
+        eval "ssh $VERBOSE_FLAG $tty_option $jump_args -p \"$port\" \"$user@$host\" \"$final_command\""
     fi
 }
 
@@ -729,14 +790,15 @@ run_scp() {
 
     # Get connection data from JSON
     local connection_data
-    connection_data=$(jq -r --arg alias "$alias_str" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+    connection_data=$(jq -r --arg alias "$alias_str" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.jump)"' "$CONFIG_FILE")
     
     if [ -z "$connection_data" ]; then echo "Error: Alias '$alias_str' no encontrado."; return 1; fi
     
-    IFS='|' read -r host user port key pass <<< "$connection_data"
+    IFS='|' read -r host user port key pass jump <<< "$connection_data"
     
     if [ "$key" == "null" ]; then key=""; fi
     if [ "$pass" == "null" ]; then pass=""; fi
+    if [ "$jump" == "null" ]; then jump=""; fi
 
     local decrypted_pass=""
     if [[ "$pass" == enc:* ]]; then
@@ -752,6 +814,39 @@ run_scp() {
     local scp_command="scp $VERBOSE_FLAG -r -P $port"
     if [ -n "$key" ]; then scp_command+=" -i $key"; fi
 
+    if [ -n "$jump" ]; then
+        local jump_data
+        jump_data=$(jq -r --arg alias "$jump" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+        if [ -n "$jump_data" ]; then
+            IFS='|' read -r j_host j_user j_port j_key j_pass <<< "$jump_data"
+            
+            local j_cmd=""
+            local j_decrypted_pass=""
+            if [[ "$j_pass" == enc:* ]]; then
+                ensure_dependency "openssl" || return 1
+                read -s -p "Palabra clave para salto ($jump): " j_keyword; echo ""
+                local j_encrypted_data=${j_pass#enc:}
+                j_decrypted_pass=$(echo "$j_encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$j_keyword" 2>/dev/null)
+                if [ -z "$j_decrypted_pass" ]; then echo "Error de desencriptación para el salto."; return 1; fi
+            elif [ -n "$j_pass" ] && [ "$j_pass" != "null" ]; then
+                j_decrypted_pass="$j_pass"
+            fi
+
+            if [ -n "$j_decrypted_pass" ]; then
+                ensure_dependency "sshpass" || return 1
+                j_cmd="sshpass -p '$j_decrypted_pass' ssh -o StrictHostKeyChecking=no"
+            else
+                j_cmd="ssh -o StrictHostKeyChecking=no"
+            fi
+            
+            if [ -n "$j_port" ] && [ "$j_port" != "22" ] && [ "$j_port" != "null" ]; then j_cmd+=" -p $j_port"; fi
+            if [ -n "$j_key" ] && [ "$j_key" != "null" ]; then j_cmd+=" -i $j_key"; fi
+            scp_command+=" -o ProxyCommand=\"$j_cmd -W %h:%p $j_user@$j_host\""
+        else
+            echo "Advertencia: Alias de salto '$jump' no encontrado."
+        fi
+    fi
+
     local final_source="$source"
     local final_destination="$destination"
     
@@ -761,9 +856,11 @@ run_scp() {
     echo "Copiando archivos..."
     if [ -n "$decrypted_pass" ]; then
         ensure_dependency "sshpass" || return 1
-        sshpass -p "$decrypted_pass" $scp_command "$final_source" "$final_destination"
+        export SSHPASS="$decrypted_pass"
+        eval "sshpass -e $scp_command \"$final_source\" \"$final_destination\""
+        unset SSHPASS
     else
-        $scp_command "$final_source" "$final_destination"
+        eval "$scp_command \"$final_source\" \"$final_destination\""
     fi
     echo "Copia completada."
 }
@@ -782,14 +879,15 @@ run_tunnel() {
 
     # Get connection data from JSON
     local connection_data
-    connection_data=$(jq -r --arg alias "$alias_str" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+    connection_data=$(jq -r --arg alias "$alias_str" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.jump)"' "$CONFIG_FILE")
     
     if [ -z "$connection_data" ]; then echo "Error: Alias '$alias_str' no encontrado."; return 1; fi
     
-    IFS='|' read -r host user port key pass <<< "$connection_data"
+    IFS='|' read -r host user port key pass jump <<< "$connection_data"
     
     if [ "$key" == "null" ]; then key=""; fi
     if [ "$pass" == "null" ]; then pass=""; fi
+    if [ "$jump" == "null" ]; then jump=""; fi
 
     local decrypted_pass=""
     if [[ "$pass" == enc:* ]]; then
@@ -812,6 +910,39 @@ run_tunnel() {
     local ssh_command="ssh $VERBOSE_FLAG -o StrictHostKeyChecking=no -N $tunnel_flag $tunnel_spec -p $port"
     if [ -n "$key" ]; then ssh_command+=" -i $key"; fi
 
+    if [ -n "$jump" ]; then
+        local jump_data
+        jump_data=$(jq -r --arg alias "$jump" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+        if [ -n "$jump_data" ]; then
+            IFS='|' read -r j_host j_user j_port j_key j_pass <<< "$jump_data"
+            
+            local j_cmd=""
+            local j_decrypted_pass=""
+            if [[ "$j_pass" == enc:* ]]; then
+                ensure_dependency "openssl" || return 1
+                read -s -p "Palabra clave para salto ($jump): " j_keyword; echo ""
+                local j_encrypted_data=${j_pass#enc:}
+                j_decrypted_pass=$(echo "$j_encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$j_keyword" 2>/dev/null)
+                if [ -z "$j_decrypted_pass" ]; then echo "Error de desencriptación para el salto."; return 1; fi
+            elif [ -n "$j_pass" ] && [ "$j_pass" != "null" ]; then
+                j_decrypted_pass="$j_pass"
+            fi
+
+            if [ -n "$j_decrypted_pass" ]; then
+                ensure_dependency "sshpass" || return 1
+                j_cmd="sshpass -p '$j_decrypted_pass' ssh -o StrictHostKeyChecking=no"
+            else
+                j_cmd="ssh -o StrictHostKeyChecking=no"
+            fi
+            
+            if [ -n "$j_port" ] && [ "$j_port" != "22" ] && [ "$j_port" != "null" ]; then j_cmd+=" -p $j_port"; fi
+            if [ -n "$j_key" ] && [ "$j_key" != "null" ]; then j_cmd+=" -i $j_key"; fi
+            ssh_command+=" -o ProxyCommand=\"$j_cmd -W %h:%p $j_user@$j_host\""
+        else
+            echo "Advertencia: Alias de salto '$jump' no encontrado."
+        fi
+    fi
+
     if [ "$background" = true ]; then
         ssh_command+=" -f"
         echo "Estableciendo túnel SSH $tunnel_type en segundo plano..."
@@ -822,10 +953,10 @@ run_tunnel() {
     if [ -n "$decrypted_pass" ]; then
         ensure_dependency "sshpass" || return 1
         export SSHPASS="$decrypted_pass"
-        sshpass -e $ssh_command "$user@$host"
+        eval "sshpass -e $ssh_command \"$user@$host\""
         unset SSHPASS
     else
-        $ssh_command "$user@$host"
+        eval "$ssh_command \"$user@$host\""
     fi
 
     if [ "$background" = true ]; then
@@ -956,15 +1087,16 @@ browse_sftp() {
 
     # Get connection data from JSON
     local connection_data
-    connection_data=$(jq -r --arg alias "$alias_to_browse" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)"' "$CONFIG_FILE")
+    connection_data=$(jq -r --arg alias "$alias_to_browse" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.jump)"' "$CONFIG_FILE")
     
     if [ -z "$connection_data" ]; then echo "Error: Alias no encontrado."; return 1; fi
     
-    IFS='|' read -r host user port key pass remote_dir <<< "$connection_data"
+    IFS='|' read -r host user port key pass remote_dir jump <<< "$connection_data"
     
     if [ "$key" == "null" ]; then key=""; fi
     if [ "$pass" == "null" ]; then pass=""; fi
     if [ "$remote_dir" == "null" ]; then remote_dir=""; fi
+    if [ "$jump" == "null" ]; then jump=""; fi
 
     local decrypted_pass=""
     if [[ "$pass" == enc:* ]]; then
@@ -988,6 +1120,39 @@ browse_sftp() {
     if ! $IS_TERMUX; then sshfs_opts+=" -o allow_other,default_permissions"; fi
     if [ -n "$key" ]; then sshfs_opts+=" -o IdentityFile=$key"; fi
     
+    if [ -n "$jump" ]; then
+        local jump_data
+        jump_data=$(jq -r --arg alias "$jump" '.[] | select(.alias == $alias) | "\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)"' "$CONFIG_FILE")
+        if [ -n "$jump_data" ]; then
+            IFS='|' read -r j_host j_user j_port j_key j_pass <<< "$jump_data"
+            
+            local j_cmd=""
+            local j_decrypted_pass=""
+            if [[ "$j_pass" == enc:* ]]; then
+                ensure_dependency "openssl" || return 1
+                read -s -p "Palabra clave para salto ($jump): " j_keyword; echo ""
+                local j_encrypted_data=${j_pass#enc:}
+                j_decrypted_pass=$(echo "$j_encrypted_data" | openssl enc -aes-256-cbc -a -d -salt -pbkdf2 -pass pass:"$j_keyword" 2>/dev/null)
+                if [ -z "$j_decrypted_pass" ]; then echo "Error de desencriptación para el salto."; return 1; fi
+            elif [ -n "$j_pass" ] && [ "$j_pass" != "null" ]; then
+                j_decrypted_pass="$j_pass"
+            fi
+
+            if [ -n "$j_decrypted_pass" ]; then
+                ensure_dependency "sshpass" || return 1
+                j_cmd="sshpass -p '$j_decrypted_pass' ssh -o StrictHostKeyChecking=no"
+            else
+                j_cmd="ssh -o StrictHostKeyChecking=no"
+            fi
+            
+            if [ -n "$j_port" ] && [ "$j_port" != "22" ] && [ "$j_port" != "null" ]; then j_cmd+=" -p $j_port"; fi
+            if [ -n "$j_key" ] && [ "$j_key" != "null" ]; then j_cmd+=" -i $j_key"; fi
+            sshfs_opts+=" -o ProxyCommand=\"$j_cmd -W %h:%p $j_user@$j_host\""
+        else
+            echo "Advertencia: Alias de salto '$jump' no encontrado."
+        fi
+    fi
+    
     local remote_path_to_mount
     local mc_start_path
     
@@ -1001,12 +1166,12 @@ browse_sftp() {
 
     if [ -n "$decrypted_pass" ]; then
         ensure_dependency "sshpass" || return 1
-        if ! echo "$decrypted_pass" | sshfs "${user}@${host}:${remote_path_to_mount}" "$MOUNT_POINT" -o password_stdin $sshfs_opts; then
+        if ! eval "echo \"$decrypted_pass\" | sshfs \"${user}@${host}:${remote_path_to_mount}\" \"$MOUNT_POINT\" -o password_stdin $sshfs_opts"; then
             echo "Error de montaje."
             return 1
         fi
     else
-        if ! sshfs "${user}@${host}:${remote_path_to_mount}" "$MOUNT_POINT" $sshfs_opts; then
+        if ! eval "sshfs \"${user}@${host}:${remote_path_to_mount}\" \"$MOUNT_POINT\" $sshfs_opts"; then
             echo "Error de montaje."
             return 1
         fi
@@ -1041,8 +1206,8 @@ list_connections() {
         echo "----------------------------------------------------------------------------------------------------"
     fi
 
-    jq -r '.[] | "\(.alias)|\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)"' "$CONFIG_FILE" | \
-    while IFS='|' read -r alias host user port key pass remote_dir cmd; do
+    jq -r '.[] | "\(.alias)|\(.host)|\(.user)|\(.port)|\(.key)|\(.pass)|\(.remote_dir)|\(.cmd)|\(.jump)"' "$CONFIG_FILE" | \
+    while IFS='|' read -r alias host user port key pass remote_dir cmd jump; do
         # Skip comments or empty lines
         if [ -z "$alias" ] || [ "$alias" == "null" ]; then continue; fi
 
@@ -1067,6 +1232,7 @@ list_connections() {
             local extra=""
             if [ -n "$remote_dir" ] && [ "$remote_dir" != "null" ]; then extra="Dir: $remote_dir "; fi
             if [ -n "$cmd" ] && [ "$cmd" != "null" ]; then extra="${extra}Cmd: $cmd "; fi
+            if [ -n "$jump" ] && [ "$jump" != "null" ]; then extra="${extra}Jump: $jump "; fi
 
             printf "%-15s | %-30s | %-20s | %s\n" "$alias" "$target" "$auth_info" "$extra"
         else
