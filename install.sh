@@ -7,8 +7,8 @@
 #   Este script descarga la última versión de ssh-manager, la instala
 #   globalmente y te permite elegir dónde guardar tus configuraciones.
 #
-#   Uso (Linux/macOS): curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
-#   Uso (Termux):      curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
+#   Uso (Linux/macOS): curl -fsSL "https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh?$(date +%s)" | sudo bash
+#   Uso (Termux):      curl -fsSL "https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh?$(date +%s)" | bash
 #
 # ==============================================================================
 
@@ -179,7 +179,7 @@ main() {
     echo "Las conexiones se guardarán en: $config_dir"
     
     echo "Descargando scripts..."
-    if ! curl -fsSL "$REPO_BASE_URL/ssh-manager.sh" -o "$INSTALL_DIR/$MAIN_CMD"; then
+    if ! curl -fsSL "$REPO_BASE_URL/ssh-manager.sh?$(date +%s)" -o "$INSTALL_DIR/$MAIN_CMD"; then
         echo "Error: No se pudo descargar el script principal."; exit 1
     fi
 

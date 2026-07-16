@@ -1,9 +1,10 @@
-# SSH Manager v1.0.13
+# SSH Manager v1.0.14
 
 **SSH Manager** es una herramienta de línea de comandos (CLI) escrita en Bash para gestionar tus conexiones SSH de forma fácil y rápida. Olvídate de recordar IPs, usuarios y rutas de claves; con este script puedes guardar, editar, listar y conectarte a tus servidores con un menú interactivo.
 
-## Novedades v1.0.13
+## Novedades v1.0.14
 
+- **Instalación cache-busted**: El instalador y el comando `update` evitan caché stale de `raw.githubusercontent.com` después de publicar una versión.
 - **Instalador no interactivo**: Evita warnings al instalar desde contenedores o shells sin TTY usable.
 - **Túneles en segundo plano**: Mejora la creación de túneles con `sshpass` y `ProxyCommand`, evitando cierres por `ssh -f` y registrando el PID real.
 
@@ -36,13 +37,13 @@ Elige el comando adecuado para tu sistema:
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | sudo bash
+curl -fsSL "https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh?$(date +%s)" | sudo bash
 ```
 
 **Termux (Android)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master/install.sh?$(date +%s)" | bash
 ```
 
 ## 🔄 Actualización
