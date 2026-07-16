@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.14"
+VERSION="1.0.15"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -751,12 +751,18 @@ delete_connection() {
 
 update_script() {
     echo "Buscando actualizaciones..."
-    local remote_version; remote_version=$(curl -fsSL "$REPO_BASE_URL/version.txt?$(date +%s)" 2>/dev/null)
+    local repo_ref
+    repo_ref=$(curl -fsSL "https://api.github.com/repos/octaviocubillos/ssh-manage/commits/master" | jq -r '.sha // empty' 2>/dev/null || true)
+    local remote_base_url="$REPO_BASE_URL"
+    if [ -n "$repo_ref" ]; then
+        remote_base_url="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/$repo_ref"
+    fi
+    local remote_version; remote_version=$(curl -fsSL "$remote_base_url/version.txt?$(date +%s)" 2>/dev/null)
     if [ -z "$remote_version" ]; then echo "No se pudo verificar la versión remota."; return 1; fi
     if [ "$VERSION" == "$remote_version" ]; then echo "Ya tienes la última versión instalada ($VERSION)."; else
         echo "¡Nueva versión disponible! ($remote_version)"; read -p "¿Deseas actualizar ahora? (s/n): " choice
         if [[ "$choice" =~ ^[sS]$ ]]; then
-            local install_script_url="$REPO_BASE_URL/install.sh?$(date +%s)"
+            local install_script_url="$remote_base_url/install.sh?$(date +%s)"
             local exec_cmd="curl -fsSL $install_script_url | $SUDO_CMD bash"
             if $IS_TERMUX; then exec_cmd="curl -fsSL $install_script_url | bash"; fi
             echo "Ejecutando el instalador..."

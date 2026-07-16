@@ -179,7 +179,13 @@ main() {
     echo "Las conexiones se guardarán en: $config_dir"
     
     echo "Descargando scripts..."
-    if ! curl -fsSL "$REPO_BASE_URL/ssh-manager.sh?$(date +%s)" -o "$INSTALL_DIR/$MAIN_CMD"; then
+    local repo_ref
+    repo_ref=$(curl -fsSL "https://api.github.com/repos/octaviocubillos/ssh-manage/commits/master" | jq -r '.sha // empty' 2>/dev/null || true)
+    local download_base_url="$REPO_BASE_URL"
+    if [ -n "$repo_ref" ]; then
+        download_base_url="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/$repo_ref"
+    fi
+    if ! curl -fsSL "$download_base_url/ssh-manager.sh?$(date +%s)" -o "$INSTALL_DIR/$MAIN_CMD"; then
         echo "Error: No se pudo descargar el script principal."; exit 1
     fi
 
