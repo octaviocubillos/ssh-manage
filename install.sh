@@ -159,7 +159,7 @@ main() {
     local default_config_dir="$user_home/.config/ssh-manager"
     local config_dir=""
     
-    if [ -c /dev/tty ]; then
+    if { : < /dev/tty; } 2>/dev/null; then
         if read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty; then
             :
         else
