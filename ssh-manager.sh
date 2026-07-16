@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.10"
+VERSION="1.0.11"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -908,7 +908,7 @@ run_tunnel() {
         tunnel_type="reverso"
     fi
 
-    local ssh_command="ssh $VERBOSE_FLAG -o StrictHostKeyChecking=no -N $tunnel_flag $tunnel_spec -p $port"
+    local ssh_command="ssh $VERBOSE_FLAG -o StrictHostKeyChecking=no -o ExitOnForwardFailure=yes -N $tunnel_flag $tunnel_spec -p $port"
     if [ -n "$key" ]; then ssh_command+=" -i $key"; fi
 
     if [ -n "$jump" ]; then
@@ -945,31 +945,45 @@ run_tunnel() {
     fi
 
     if [ "$background" = true ]; then
-        ssh_command+=" -f"
         echo "Estableciendo túnel SSH $tunnel_type en segundo plano..."
     else
         echo "Estableciendo túnel SSH $tunnel_type. Presiona Ctrl+C para cerrarlo."
     fi
 
-    if [ -n "$decrypted_pass" ]; then
+    if [ "$background" = true ]; then
+        local tunnel_pid
+        local safe_alias
+        safe_alias=$(echo "$alias_str" | tr -c '[:alnum:]_.-' '_')
+        local log_file="$CONFIG_DIR/tunnel-${safe_alias}-$(date +%s).log"
+
+        if [ -n "$decrypted_pass" ]; then
+            ensure_dependency "sshpass" || return 1
+            export SSHPASS="$decrypted_pass"
+            eval "nohup sshpass -e $ssh_command \"$user@$host\" > \"$log_file\" 2>&1 & tunnel_pid=\$!"
+            unset SSHPASS
+        else
+            eval "nohup $ssh_command \"$user@$host\" > \"$log_file\" 2>&1 & tunnel_pid=\$!"
+        fi
+
+        sleep 1
+        if [ -n "$tunnel_pid" ] && ps -p "$tunnel_pid" > /dev/null; then
+            echo "$tunnel_pid|$alias_str|$tunnel_spec" >> "$TUNNELS_PID_FILE"
+            echo "Túnel creado en segundo plano con PID: $tunnel_pid"
+        else
+            echo "Error: Falló la creación del túnel en segundo plano."
+            if [ -s "$log_file" ]; then
+                echo "Log del túnel ($log_file):"
+                sed -n '1,20p' "$log_file"
+            fi
+            return 1
+        fi
+    elif [ -n "$decrypted_pass" ]; then
         ensure_dependency "sshpass" || return 1
         export SSHPASS="$decrypted_pass"
         eval "sshpass -e $ssh_command \"$user@$host\""
         unset SSHPASS
     else
         eval "$ssh_command \"$user@$host\""
-    fi
-
-    if [ "$background" = true ]; then
-        sleep 1
-        local tunnel_pid
-        tunnel_pid=$(pgrep -f "ssh.*$tunnel_spec.*$user@$host")
-        if [ -n "$tunnel_pid" ]; then
-            echo "$tunnel_pid|$alias_str|$tunnel_spec" >> "$TUNNELS_PID_FILE"
-            echo "Túnel creado en segundo plano con PID: $tunnel_pid"
-        else
-            echo "Error: Falló la creación del túnel en segundo plano."
-        fi
     fi
 }
 

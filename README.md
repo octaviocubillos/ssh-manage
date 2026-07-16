@@ -1,6 +1,10 @@
-# SSH Manager v1.0.6
+# SSH Manager v1.0.11
 
 **SSH Manager** es una herramienta de línea de comandos (CLI) escrita en Bash para gestionar tus conexiones SSH de forma fácil y rápida. Olvídate de recordar IPs, usuarios y rutas de claves; con este script puedes guardar, editar, listar y conectarte a tus servidores con un menú interactivo.
+
+## Novedades v1.0.11
+
+- **Túneles en segundo plano**: Mejora la creación de túneles con `sshpass` y `ProxyCommand`, evitando cierres por `ssh -f` y registrando el PID real.
 
 ## Novedades v1.0.6
 
