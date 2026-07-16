@@ -22,6 +22,7 @@ ALIAS_CMD="sshm"
 # --- LÓGICA DE INSTALACIÓN ---
 
 show_spinner() {
+    if [ ! -t 1 ] || [ -z "${TERM:-}" ]; then while true; do sleep 1; done; return; fi
     if ! command -v "tput" &> /dev/null; then while true; do sleep 1; done; return; fi
     local -r FRAMES='|/-\'; local i=0; tput civis; trap 'tput cnorm' EXIT
     while true; do printf "\b%s" "${FRAMES:i++%${#FRAMES}:1}"; sleep 0.1; done
@@ -159,8 +160,10 @@ main() {
     local default_config_dir="$user_home/.config/ssh-manager"
     local config_dir=""
     
-    if { : < /dev/tty; } 2>/dev/null; then
-        if read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < /dev/tty; then
+    local tty_path=""
+    tty_path=$(tty 2>/dev/null || true)
+    if [ -n "$tty_path" ] && [ "$tty_path" != "not a tty" ] && [ -r "$tty_path" ]; then
+        if read -p "Introduce la ruta para guardar las conexiones [$default_config_dir]: " config_dir < "$tty_path"; then
             :
         else
              echo "Usando directorio por defecto."
