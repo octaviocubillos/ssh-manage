@@ -1,9 +1,11 @@
-# SSH Manager v1.0.19
+# SSH Manager v1.0.20
 
 **SSH Manager** es una herramienta de línea de comandos (CLI) escrita en Bash para gestionar tus conexiones SSH de forma fácil y rápida. Olvídate de recordar IPs, usuarios y rutas de claves; con este script puedes guardar, editar, listar y conectarte a tus servidores con un menú interactivo.
 
-## Novedades v1.0.19
+## Novedades v1.0.20
 
+- **Menús**: `Escape` vuelve al menú anterior, igual que ← o `q`.
+- **Túneles/proxies**: El menú de túneles muestra explícitamente túneles y proxies activos.
 - **Termux**: El instalador ajusta el shebang instalado a `$PREFIX/bin/bash`.
 - **Termux**: Los scripts usan `#!/usr/bin/env bash` para funcionar sin `/bin/bash`.
 - **Termux**: El instalador ya no intenta instalar `mc` ni `sshfs`, porque `browse` no está disponible en Termux.

@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.19"
+VERSION="1.0.20"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -307,6 +307,17 @@ show_usage() {
 show_version() { echo "ssh-manager version $VERSION"; }
 is_alias_reserved() { local alias_to_check=$1; for cmd in "${RESERVED_COMMANDS[@]}"; do if [[ "$cmd" == "$alias_to_check" ]]; then return 0; fi; done; return 1; }
 
+read_menu_key() {
+    local key
+    IFS= read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then
+        local rest
+        IFS= read -rsn2 -t 0.05 rest || true
+        key+="$rest"
+    fi
+    printf '%s' "$key"
+}
+
 select_alias() {
     local prompt_text=$1
     # Read aliases and details into an array
@@ -333,7 +344,7 @@ select_alias() {
     while true; do
         clear >&2
         echo "$prompt_text" >&2
-        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/q para volver." >&2
+        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/Esc/q para volver." >&2
         echo "------------------------------------------" >&2
 
         for i in "${!options[@]}"; do
@@ -345,10 +356,7 @@ select_alias() {
         done
         echo "------------------------------------------" >&2
 
-        read -rsn1 key
-        if [[ $key == $'\x1b' ]]; then
-            read -rsn2 key
-        fi
+        key=$(read_menu_key)
 
         case "$key" in
             '[A') # Up
@@ -357,7 +365,7 @@ select_alias() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|q|Q) # Left or q - Back
+            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
                 return 1
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -878,6 +886,7 @@ run_tunnel() {
     local tunnel_spec=$2
     local reverse=${3:-false}
     local background=${4:-false}
+    local tunnel_kind=${5:-tunnel}
 
     if [ -z "$alias_str" ] || [ -z "$tunnel_spec" ]; then
         echo "Error: se requiere un alias y una especificación de túnel."
@@ -974,7 +983,7 @@ run_tunnel() {
 
         sleep 1
         if [ -n "$tunnel_pid" ] && ps -p "$tunnel_pid" > /dev/null; then
-            echo "$tunnel_pid|$alias_str|$tunnel_spec" >> "$TUNNELS_PID_FILE"
+            echo "$tunnel_pid|$alias_str|$tunnel_spec|$tunnel_kind" >> "$TUNNELS_PID_FILE"
             echo "Túnel creado en segundo plano con PID: $tunnel_pid"
         else
             echo "Error: Falló la creación del túnel en segundo plano."
@@ -1021,18 +1030,19 @@ run_proxy() {
         return 1
     fi
 
-    run_tunnel "$alias_str" "$tunnel_spec" false true >/dev/null 2>&1 || true
+    run_tunnel "$alias_str" "$tunnel_spec" false true proxy >/dev/null 2>&1 || true
     exec "$nc_cmd" 127.0.0.1 "$local_port"
 }
 
 list_tunnels() {
     if [ ! -s "$TUNNELS_PID_FILE" ]; then echo "No hay túneles activos gestionados."; return; fi
     local temp_pid_file; temp_pid_file=$(mktemp); local active_tunnels=false
-    echo "Túneles activos en segundo plano:"; echo "--------------------------------"
-    while IFS='|' read -r pid alias_str spec || [ -n "$pid" ]; do
+    echo "Túneles/proxies activos en segundo plano:"; echo "-----------------------------------------"
+    while IFS='|' read -r pid alias_str spec kind || [ -n "$pid" ]; do
         if ps -p "$pid" > /dev/null; then
-            printf "  PID: %-10s | Alias: %-15s | Spec: %s\n" "$pid" "$alias_str" "$spec"
-            echo "$pid|$alias_str|$spec" >> "$temp_pid_file"; active_tunnels=true
+            kind=${kind:-tunnel}
+            printf "  PID: %-10s | Tipo: %-6s | Alias: %-15s | Spec: %s\n" "$pid" "$kind" "$alias_str" "$spec"
+            echo "$pid|$alias_str|$spec|$kind" >> "$temp_pid_file"; active_tunnels=true
         fi
     done < "$TUNNELS_PID_FILE"
     if [ "$active_tunnels" = false ]; then echo "No se encontraron túneles activos. Limpiando registro..."; fi
@@ -1047,11 +1057,12 @@ select_tunnel() {
     
     # Filter active tunnels
     local temp_pid_file; temp_pid_file=$(mktemp)
-    while IFS='|' read -r pid alias_str spec || [ -n "$pid" ]; do
+    while IFS='|' read -r pid alias_str spec kind || [ -n "$pid" ]; do
         if ps -p "$pid" > /dev/null; then
-            options+=("$pid - $alias_str ($spec)")
+            kind=${kind:-tunnel}
+            options+=("$pid - $kind - $alias_str ($spec)")
             pids+=("$pid")
-            echo "$pid|$alias_str|$spec" >> "$temp_pid_file"
+            echo "$pid|$alias_str|$spec|$kind" >> "$temp_pid_file"
         fi
     done < "$TUNNELS_PID_FILE"
     mv "$temp_pid_file" "$TUNNELS_PID_FILE"
@@ -1063,7 +1074,7 @@ select_tunnel() {
     while true; do
         clear >&2
         echo "Selecciona el túnel a detener:" >&2
-        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/q para volver." >&2
+        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/Esc/q para volver." >&2
         echo "------------------------------------------" >&2
 
         for i in "${!options[@]}"; do
@@ -1075,10 +1086,7 @@ select_tunnel() {
         done
         echo "------------------------------------------" >&2
 
-        read -rsn1 key
-        if [[ $key == $'\x1b' ]]; then
-            read -rsn2 key
-        fi
+        key=$(read_menu_key)
 
         case "$key" in
             '[A') # Up
@@ -1087,7 +1095,7 @@ select_tunnel() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|q|Q) # Left or q - Back
+            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
                 return 1
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -1359,7 +1367,7 @@ export_ssh_config() {
 }
 
 run_tunnels_menu() {
-    local options=("Listar túneles activos" "Detener túnel" "Crear túnel local" "Crear túnel reverso" "Volver")
+    local options=("Listar túneles/proxies activos" "Detener túnel/proxy" "Crear túnel local" "Crear túnel reverso" "Volver")
     local selected=0
 
     while true; do
@@ -1367,7 +1375,7 @@ run_tunnels_menu() {
         echo "==========================================" >&2
         echo "           TÚNELES SSH" >&2
         echo "==========================================" >&2
-        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/q para volver." >&2
+        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/Esc/q para volver." >&2
         echo "------------------------------------------" >&2
 
         for i in "${!options[@]}"; do
@@ -1379,10 +1387,7 @@ run_tunnels_menu() {
         done
         echo "==========================================" >&2
 
-        read -rsn1 key
-        if [[ $key == $'\x1b' ]]; then
-            read -rsn2 key
-        fi
+        key=$(read_menu_key)
 
         case "$key" in
             '[A') # Up
@@ -1391,14 +1396,14 @@ run_tunnels_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|q|Q) # Left or q - Back
+            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
                 return
                 ;;
             ''|'[C') # Enter or Right - Select
                 local choice="${options[$selected]}"
                 case "$choice" in
-                    "Listar túneles activos") list_tunnels; read -p "Presiona Enter para continuar..." ;;
-                    "Detener túnel") stop_tunnel; read -p "Presiona Enter para continuar..." ;;
+                    "Listar túneles/proxies activos") list_tunnels; read -p "Presiona Enter para continuar..." ;;
+                    "Detener túnel/proxy") stop_tunnel; read -p "Presiona Enter para continuar..." ;;
                     "Crear túnel local") 
                         local a; a=$(select_alias "Selecciona conexión para el túnel")
                         if [ $? -ne 0 ] || [ -z "$a" ]; then continue; fi
@@ -1449,7 +1454,7 @@ run_settings_menu() {
         echo "==========================================" >&2
         echo "               AJUSTES" >&2
         echo "==========================================" >&2
-        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/q para volver." >&2
+        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/Esc/q para volver." >&2
         echo "------------------------------------------" >&2
 
         for i in "${!options[@]}"; do
@@ -1461,10 +1466,7 @@ run_settings_menu() {
         done
         echo "==========================================" >&2
 
-        read -rsn1 key
-        if [[ $key == $'\x1b' ]]; then
-            read -rsn2 key
-        fi
+        key=$(read_menu_key)
 
         case "$key" in
             '[A') # Up
@@ -1473,7 +1475,7 @@ run_settings_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|q|Q) # Left or q - Back
+            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
                 return
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -1563,7 +1565,7 @@ run_interactive_menu() {
         echo "=========================================="
         echo "      SSH MANAGER v$VERSION"
         echo "=========================================="
-        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/q para salir."
+        echo "Usa ↑/↓ para moverte, Enter/→ para seleccionar, ←/Esc/q para salir."
         echo "------------------------------------------"
 
         for i in "${!options[@]}"; do
@@ -1593,10 +1595,7 @@ run_interactive_menu() {
         done
         echo "=========================================="
 
-        read -rsn1 key
-        if [[ $key == $'\x1b' ]]; then
-            read -rsn2 key
-        fi
+        key=$(read_menu_key)
 
         case "$key" in
             '[A') # Up
@@ -1605,7 +1604,7 @@ run_interactive_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|q|Q) # Left or q - Exit
+            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Exit
                 exit 0
                 ;;
             ''|'[C') # Enter or Right - Select
