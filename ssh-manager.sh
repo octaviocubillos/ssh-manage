@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.20"
+VERSION="1.0.21"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -309,13 +309,65 @@ is_alias_reserved() { local alias_to_check=$1; for cmd in "${RESERVED_COMMANDS[@
 
 read_menu_key() {
     local key
-    IFS= read -rsn1 key
+    if ! IFS= read -rsn1 key; then
+        printf '__SSHM_EOF__'
+        return 1
+    fi
     if [[ $key == $'\x1b' ]]; then
         local rest
         IFS= read -rsn2 -t 0.05 rest || true
-        key+="$rest"
+        if [ -n "$rest" ]; then
+            key="$rest"
+        fi
     fi
     printf '%s' "$key"
+}
+
+pause_for_key() {
+    local prompt=${1:-"Presiona Enter/Esc para continuar..."}
+    local key
+    printf "%s" "$prompt"
+    key=$(read_menu_key)
+    printf "\n"
+    case "$key" in
+        $'\x1b'|q|Q|__SSHM_EOF__) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+read_prompt_value() {
+    local __var=$1
+    local prompt=$2
+    local value=""
+    local key
+
+    printf "%s" "$prompt"
+    while IFS= read -rsn1 key; do
+        case "$key" in
+            $'\x1b')
+                printf "\n"
+                return 130
+                ;;
+            '')
+                printf "\n"
+                printf -v "$__var" '%s' "$value"
+                return 0
+                ;;
+            $'\x7f'|$'\b')
+                if [ -n "$value" ]; then
+                    value=${value%?}
+                    printf '\b \b'
+                fi
+                ;;
+            *)
+                value+="$key"
+                printf "%s" "$key"
+                ;;
+        esac
+    done
+
+    printf "\n"
+    return 130
 }
 
 select_alias() {
@@ -326,7 +378,7 @@ select_alias() {
     
     if [ ! -s "$CONFIG_FILE" ] || [ "$(jq 'length' "$CONFIG_FILE" 2>/dev/null)" -eq 0 ]; then
         echo "Error: No hay conexiones guardadas." >&2
-        read -p "Presiona Enter para continuar..." >&2
+        pause_for_key "Presiona Enter/Esc para continuar..." >&2
         return 1
     fi
 
@@ -365,7 +417,7 @@ select_alias() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
+            '[D'|$'\x1b'|q|Q|__SSHM_EOF__) # Left, Esc, q or EOF - Back
                 return 1
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -382,7 +434,7 @@ select_alias() {
 
 add_connection() {
     echo "Añadir nueva conexión SSH:"
-    read -p "Alias (nombre corto): " alias
+    read_prompt_value alias "Alias (nombre corto, Esc para cancelar): " || { echo "Cancelado."; return 1; }
     if [ -z "$alias" ]; then echo "Cancelado."; return; fi
     
     if jq -e --arg alias "$alias" '.[] | select(.alias == $alias)' "$CONFIG_FILE" > /dev/null; then
@@ -390,23 +442,25 @@ add_connection() {
         return
     fi
 
-    read -p "Host (IP o dominio): " host
-    read -p "Usuario: " user
-    read -p "Puerto [22]: " port; port=${port:-22}
+    read_prompt_value host "Host (IP o dominio): " || { echo "Cancelado."; return 1; }
+    read_prompt_value user "Usuario: " || { echo "Cancelado."; return 1; }
+    read_prompt_value port "Puerto [22]: " || { echo "Cancelado."; return 1; }
+    port=${port:-22}
     
     echo "Método de autenticación:"
     echo "1. Clave SSH (pem/pub)"
     echo "2. Contraseña (texto plano)"
     echo "3. Contraseña (encriptada)"
     echo "4. Ninguna"
-    read -p "Opción [1]: " auth_opt; auth_opt=${auth_opt:-1}
+    read_prompt_value auth_opt "Opción [1]: " || { echo "Cancelado."; return 1; }
+    auth_opt=${auth_opt:-1}
 
     local key=""
     local pass=""
     
     case "$auth_opt" in
         1)
-            read -p "Ruta absoluta a la clave: " key
+            read_prompt_value key "Ruta absoluta a la clave: " || { echo "Cancelado."; return 1; }
             if [ ! -f "$key" ]; then echo "Advertencia: El archivo de clave no existe."; fi
             ;;
         2)
@@ -427,9 +481,9 @@ add_connection() {
             ;;
     esac
 
-    read -p "Directorio remoto inicial (opcional): " remote_dir
-    read -p "Comando a ejecutar al conectar (opcional): " cmd
-    read -p "Host de salto (alias, opcional): " jump
+    read_prompt_value remote_dir "Directorio remoto inicial (opcional): " || { echo "Cancelado."; return 1; }
+    read_prompt_value cmd "Comando a ejecutar al conectar (opcional): " || { echo "Cancelado."; return 1; }
+    read_prompt_value jump "Host de salto (alias, opcional): " || { echo "Cancelado."; return 1; }
     
     # Add to JSON
     local temp_file
@@ -479,19 +533,19 @@ edit_connection() {
         local host="$old_host" user="$old_user" port="$old_port" key="$old_key" pass="$old_pass" remote_dir="$old_remote_dir" cmd="$old_cmd" jump="$old_jump"
         
         case "$field_to_edit" in
-            host) read -p "Nuevo Host [$host]: " new_value; host=${new_value:-$host} ;;
-            user) read -p "Nuevo Usuario [$user]: " new_value; user=${new_value:-$user} ;;
-            port) read -p "Nuevo Puerto [$port]: " new_value; port=${new_value:-$port} ;;
+            host) read_prompt_value new_value "Nuevo Host [$host] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; host=${new_value:-$host} ;;
+            user) read_prompt_value new_value "Nuevo Usuario [$user] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; user=${new_value:-$user} ;;
+            port) read_prompt_value new_value "Nuevo Puerto [$port] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; port=${new_value:-$port} ;;
             auth)
                 echo "1. Clave SSH (pem/pub)"
                 echo "2. Contraseña (texto plano)"
                 echo "3. Contraseña (encriptada)"
                 echo "4. Ninguna"
-                read -p "Opción: " auth_opt
+                read_prompt_value auth_opt "Opción (Esc para cancelar): " || { echo "Cancelado."; return 1; }
                 
                 case "$auth_opt" in
                     1)
-                        read -p "Nueva ruta clave: " key
+                        read_prompt_value key "Nueva ruta clave: " || { echo "Cancelado."; return 1; }
                         pass=""
                         ;;
                     2)
@@ -516,59 +570,59 @@ edit_connection() {
                         ;;
                 esac
                 ;;
-            dir) read -p "Nuevo Directorio [$remote_dir]: " new_value; remote_dir=${new_value:-$remote_dir} ;;
-            cmd) read -p "Nuevo Comando [$cmd]: " new_value; cmd=${new_value:-$cmd} ;;
-            jump) read -p "Nuevo Host de salto [$jump]: " new_value; jump=${new_value:-$jump} ;;
+            dir) read_prompt_value new_value "Nuevo Directorio [$remote_dir] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; remote_dir=${new_value:-$remote_dir} ;;
+            cmd) read_prompt_value new_value "Nuevo Comando [$cmd] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; cmd=${new_value:-$cmd} ;;
+            jump) read_prompt_value new_value "Nuevo Host de salto [$jump] (Esc para cancelar): " || { echo "Cancelado."; return 1; }; jump=${new_value:-$jump} ;;
             *) echo "Campo inválido."; return 1 ;;
         esac
     else
         # Wizard mode
-        echo "Editando '$alias_to_edit'. Presiona Enter para mantener el valor actual."
+        echo "Editando '$alias_to_edit'. Presiona Enter para mantener el valor actual o Esc para cancelar."
         
         # Host
         while true; do
-            read -p "Nuevo Host [$old_host]: " host
+            read_prompt_value host "Nuevo Host [$old_host]: " || { echo "Cancelado."; return 1; }
             host=${host:-$old_host}
             if [ -z "$host" ]; then echo "Host obligatorio."; else break; fi
         done
 
         # User
         while true; do
-            read -p "Nuevo Usuario [$old_user]: " user
+            read_prompt_value user "Nuevo Usuario [$old_user]: " || { echo "Cancelado."; return 1; }
             user=${user:-$old_user}
             if [ -z "$user" ]; then echo "Usuario obligatorio."; else break; fi
         done
 
         # Port
-        read -p "Nuevo Puerto [$old_port]: " port
+        read_prompt_value port "Nuevo Puerto [$old_port]: " || { echo "Cancelado."; return 1; }
         port=${port:-$old_port}
 
         # Remote Dir
-        read -p "Nuevo Directorio [$old_remote_dir]: " remote_dir
+        read_prompt_value remote_dir "Nuevo Directorio [$old_remote_dir]: " || { echo "Cancelado."; return 1; }
         remote_dir=${remote_dir:-$old_remote_dir}
 
         # Command
-        read -p "Nuevo Comando [$old_cmd]: " cmd
+        read_prompt_value cmd "Nuevo Comando [$old_cmd]: " || { echo "Cancelado."; return 1; }
         cmd=${cmd:-$old_cmd}
 
         # Jump
-        read -p "Nuevo Host de salto (alias) [$old_jump]: " jump
+        read_prompt_value jump "Nuevo Host de salto (alias) [$old_jump]: " || { echo "Cancelado."; return 1; }
         jump=${jump:-$old_jump}
 
         # Auth
         local key="$old_key"
         local pass="$old_pass"
-        read -p "¿Cambiar autenticación? (s/n): " change_auth
+        read_prompt_value change_auth "¿Cambiar autenticación? (s/n): " || { echo "Cancelado."; return 1; }
         if [[ "$change_auth" =~ ^[sS]$ ]]; then
             echo "1. Clave SSH (pem/pub)"
             echo "2. Contraseña (texto plano)"
             echo "3. Contraseña (encriptada)"
             echo "4. Ninguna"
-            read -p "Opción: " auth_opt
+            read_prompt_value auth_opt "Opción: " || { echo "Cancelado."; return 1; }
             
             case "$auth_opt" in
                 1)
-                    read -p "Nueva ruta clave: " key
+                    read_prompt_value key "Nueva ruta clave: " || { echo "Cancelado."; return 1; }
                     pass=""
                     ;;
                 2)
@@ -1095,7 +1149,7 @@ select_tunnel() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
+            '[D'|$'\x1b'|q|Q|__SSHM_EOF__) # Left, Esc, q or EOF - Back
                 return 1
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -1396,47 +1450,47 @@ run_tunnels_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
+            '[D'|$'\x1b'|q|Q|__SSHM_EOF__) # Left, Esc, q or EOF - Back
                 return
                 ;;
             ''|'[C') # Enter or Right - Select
                 local choice="${options[$selected]}"
                 case "$choice" in
-                    "Listar túneles/proxies activos") list_tunnels; read -p "Presiona Enter para continuar..." ;;
-                    "Detener túnel/proxy") stop_tunnel; read -p "Presiona Enter para continuar..." ;;
+                    "Listar túneles/proxies activos") list_tunnels; pause_for_key ;;
+                    "Detener túnel/proxy") stop_tunnel; pause_for_key ;;
                     "Crear túnel local") 
                         local a; a=$(select_alias "Selecciona conexión para el túnel")
                         if [ $? -ne 0 ] || [ -z "$a" ]; then continue; fi
                         
                         echo "Configurando túnel local (Puerto Local -> Host:Puerto Remoto)"
-                        read -p "Puerto Local (tu máquina): " l_port
+                        read_prompt_value l_port "Puerto Local (tu máquina): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -z "$l_port" ]; then echo "Cancelado."; sleep 1; continue; fi
                         
-                        read -p "Host Destino (desde el servidor) [localhost]: " d_host
+                        read_prompt_value d_host "Host Destino (desde el servidor) [localhost]: " || { echo "Cancelado."; sleep 1; continue; }
                         d_host=${d_host:-localhost}
                         
-                        read -p "Puerto Destino (en el servidor/red): " d_port
+                        read_prompt_value d_port "Puerto Destino (en el servidor/red): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -z "$d_port" ]; then echo "Cancelado."; sleep 1; continue; fi
                         
                         run_tunnel "$a" "$l_port:$d_host:$d_port" false true
-                        read -p "Presiona Enter para continuar..." 
+                        pause_for_key
                         ;;
                     "Crear túnel reverso") 
                         local a; a=$(select_alias "Selecciona conexión para el túnel")
                         if [ $? -ne 0 ] || [ -z "$a" ]; then continue; fi
 
                         echo "Configurando túnel reverso (Puerto Remoto -> Host:Puerto Local)"
-                        read -p "Puerto Remoto (en el servidor): " r_port
+                        read_prompt_value r_port "Puerto Remoto (en el servidor): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -z "$r_port" ]; then echo "Cancelado."; sleep 1; continue; fi
 
-                        read -p "Host Local (desde tu máquina) [localhost]: " l_host
+                        read_prompt_value l_host "Host Local (desde tu máquina) [localhost]: " || { echo "Cancelado."; sleep 1; continue; }
                         l_host=${l_host:-localhost}
 
-                        read -p "Puerto Local (tu máquina): " l_port
+                        read_prompt_value l_port "Puerto Local (tu máquina): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -z "$l_port" ]; then echo "Cancelado."; sleep 1; continue; fi
 
                         run_tunnel "$a" "$r_port:$l_host:$l_port" true true
-                        read -p "Presiona Enter para continuar..." 
+                        pause_for_key
                         ;;
                     "Volver") return ;;
                 esac
@@ -1475,7 +1529,7 @@ run_settings_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Back
+            '[D'|$'\x1b'|q|Q|__SSHM_EOF__) # Left, Esc, q or EOF - Back
                 return
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -1487,11 +1541,11 @@ run_settings_menu() {
                         echo "Archivo de logs:       $DEPS_LOG"
                         echo "Archivo PID túneles:   $TUNNELS_PID_FILE"
                         echo "------------------------------------------"
-                        read -p "Presiona Enter para continuar..."
+                        pause_for_key
                         ;;
                     "Archivo de conexiones")
                         echo "Ubicación actual: $CONNECTIONS_PATH"
-                        read -p "Nueva ubicación (vacío para cancelar): " new_path
+                        read_prompt_value new_path "Nueva ubicación (vacío para cancelar, Esc para volver): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -n "$new_path" ]; then
                             # Expand tilde if present
                             new_path="${new_path/#\~/$HOME}"
@@ -1503,12 +1557,12 @@ run_settings_menu() {
                             fi
                             load_config
                             echo "Configuración actualizada."
-                            read -p "Presiona Enter para continuar..."
+                            pause_for_key
                         fi
                         ;;
                     "Archivo de logs (deps)")
                         echo "Ubicación actual: $DEPS_LOG"
-                        read -p "Nueva ubicación (vacío para cancelar): " new_path
+                        read_prompt_value new_path "Nueva ubicación (vacío para cancelar, Esc para volver): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -n "$new_path" ]; then
                             new_path="${new_path/#\~/$HOME}"
                             if grep -q "DEPS_LOG_PATH=" "$MASTER_CONFIG_FILE"; then
@@ -1518,12 +1572,12 @@ run_settings_menu() {
                             fi
                             load_config
                             echo "Configuración actualizada."
-                            read -p "Presiona Enter para continuar..."
+                            pause_for_key
                         fi
                         ;;
                     "Archivo PID túneles")
                         echo "Ubicación actual: $TUNNELS_PID_FILE"
-                        read -p "Nueva ubicación (vacío para cancelar): " new_path
+                        read_prompt_value new_path "Nueva ubicación (vacío para cancelar, Esc para volver): " || { echo "Cancelado."; sleep 1; continue; }
                         if [ -n "$new_path" ]; then
                             new_path="${new_path/#\~/$HOME}"
                             if grep -q "TUNNELS_PID_PATH=" "$MASTER_CONFIG_FILE"; then
@@ -1533,11 +1587,11 @@ run_settings_menu() {
                             fi
                             load_config
                             echo "Configuración actualizada."
-                            read -p "Presiona Enter para continuar..."
+                            pause_for_key
                         fi
                         ;;
-                    "Exportar conexiones a ~/.ssh/config") export_ssh_config; read -p "Presiona Enter para continuar..." ;;
-                    "Actualizar script") update_script; read -p "Presiona Enter para continuar..." ;;
+                    "Exportar conexiones a ~/.ssh/config") export_ssh_config; pause_for_key ;;
+                    "Actualizar script") update_script; pause_for_key ;;
                     "Volver") return ;;
                 esac
                 ;;
@@ -1604,7 +1658,7 @@ run_interactive_menu() {
             '[B') # Down
                 selected=$(( (selected + 1) % ${#options[@]} ))
                 ;;
-            '[D'|$'\x1b'|q|Q) # Left, Esc or q - Exit
+            '[D'|$'\x1b'|q|Q|__SSHM_EOF__) # Left, Esc, q or EOF - Exit
                 exit 0
                 ;;
             ''|'[C') # Enter or Right - Select
@@ -1625,10 +1679,10 @@ run_interactive_menu() {
 
                 case "$choice" in
                     "Conectar a un servidor") connect_to_host ;;
-                    "Listar conexiones") list_connections -a; read -p "Presiona Enter para continuar..." ;;
-                    "Añadir nueva conexión") if add_connection; then read -p "Presiona Enter para continuar..."; fi ;;
-                    "Editar conexión") if edit_connection; then read -p "Presiona Enter para continuar..."; fi ;;
-                    "Eliminar conexión") if delete_connection; then read -p "Presiona Enter para continuar..."; fi ;;
+                    "Listar conexiones") list_connections -a; pause_for_key ;;
+                    "Añadir nueva conexión") if add_connection; then pause_for_key; fi ;;
+                    "Editar conexión") if edit_connection; then pause_for_key; fi ;;
+                    "Eliminar conexión") if delete_connection; then pause_for_key; fi ;;
                     "Explorar archivos") browse_sftp ;;
                     "Túneles SSH") run_tunnels_menu ;;
                     "Ajustes") run_settings_menu ;;
