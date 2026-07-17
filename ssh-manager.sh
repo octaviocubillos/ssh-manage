@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.15"
+VERSION="1.0.16"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -68,7 +68,7 @@ for arg in "$@"; do
 done
 set -- "${args[@]}"
 
-RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d" "update" "-u" "scp" "-s" "tunnel" "-t" "reverse-tunnel" "-rt" "help" "-h" "version" "-v" "list-tunnels" "-lt" "stop-tunnel" "-st" "export" "-x")
+RESERVED_COMMANDS=("add" "-a" "edit" "-e" "list" "-l" "connect" "-c" "browse" "-b" "delete" "-d" "update" "-u" "scp" "-s" "tunnel" "-t" "reverse-tunnel" "-rt" "proxy" "help" "-h" "--help" "version" "-v" "list-tunnels" "-lt" "stop-tunnel" "-st" "export" "-x")
 
 # --- VERIFICACIÓN DE DEPENDENCIAS ---
 
@@ -288,6 +288,7 @@ show_usage() {
     printf "  %-35s %s\n" "scp,    -s <orig> <dest>" "Copia archivos (ej: alias:ruta/archivo ./local)."
     printf "  %-35s %s\n" "tunnel, -t <alias> <spec>" "Crea túnel local (spec: puerto_local:host_dest:puerto_dest)."
     printf "  %-35s %s\n" "reverse-tunnel, -rt <alias> <spec>" "Crea túnel reverso (spec: puerto_remoto:host_local:puerto_local)."
+    printf "  %-35s %s\n" "proxy <alias> <spec>" "Asegura un túnel local y lo expone como ProxyCommand."
     printf "  %-35s %s\n" "list-tunnels,   -lt" "Lista túneles activos en segundo plano."
     printf "  %-35s %s\n" "stop-tunnel,    -st [pid]" "Detiene un túnel activo."
     echo ""
@@ -993,6 +994,37 @@ run_tunnel() {
     fi
 }
 
+run_proxy() {
+    local alias_str=$1
+    local tunnel_spec=$2
+
+    if [ -z "$alias_str" ] || [ -z "$tunnel_spec" ]; then
+        echo "Error: se requiere un alias y una especificación de túnel." >&2
+        return 1
+    fi
+
+    local local_port=${tunnel_spec%%:*}
+    if [ -z "$local_port" ] || [ "$local_port" = "$tunnel_spec" ]; then
+        echo "Error: spec inválido. Usa puerto_local:host_dest:puerto_dest." >&2
+        return 1
+    fi
+
+    local nc_cmd=""
+    if command -v nc >/dev/null 2>&1; then
+        nc_cmd="nc"
+    elif command -v ncat >/dev/null 2>&1; then
+        nc_cmd="ncat"
+    elif command -v netcat >/dev/null 2>&1; then
+        nc_cmd="netcat"
+    else
+        echo "Error: se requiere nc, ncat o netcat para usar proxy." >&2
+        return 1
+    fi
+
+    run_tunnel "$alias_str" "$tunnel_spec" false true >/dev/null 2>&1 || true
+    exec "$nc_cmd" 127.0.0.1 "$local_port"
+}
+
 list_tunnels() {
     if [ ! -s "$TUNNELS_PID_FILE" ]; then echo "No hay túneles activos gestionados."; return; fi
     local temp_pid_file; temp_pid_file=$(mktemp); local active_tunnels=false
@@ -1611,7 +1643,9 @@ run_interactive_menu() {
 # --- PUNTO DE ENTRADA PRINCIPAL ---
 main() {
     load_config
-    check_base_requirements
+    if [ "${1:-}" != "proxy" ]; then
+        check_base_requirements
+    fi
 
     if [ "$#" -gt 0 ]; then
         local COMMAND=$1; shift
@@ -1625,10 +1659,11 @@ main() {
             export|-x) export_ssh_config ;;
             update|-u) update_script ;;
             version|-v) show_version ;;
-            help|-h) show_usage ;;
+            help|-h|--help) show_usage ;;
             scp|-s) run_scp "$1" "$2" ;;
             tunnel|-t) run_tunnel "$1" "$2" "$3" "$4" ;;
             reverse-tunnel|-rt) run_tunnel "$1" "$2" true "$4" ;;
+            proxy) run_proxy "$1" "$2" ;;
             list-tunnels|-lt) list_tunnels ;;
             stop-tunnel|-st) stop_tunnel "$1" ;;
             *) 

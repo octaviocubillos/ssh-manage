@@ -1,9 +1,10 @@
-# SSH Manager v1.0.15
+# SSH Manager v1.0.16
 
 **SSH Manager** es una herramienta de línea de comandos (CLI) escrita en Bash para gestionar tus conexiones SSH de forma fácil y rápida. Olvídate de recordar IPs, usuarios y rutas de claves; con este script puedes guardar, editar, listar y conectarte a tus servidores con un menú interactivo.
 
-## Novedades v1.0.15
+## Novedades v1.0.16
 
+- **Proxy para SSH config**: Nuevo comando `proxy <alias> <spec>` para usar túneles gestionados por `sshm` desde `ProxyCommand`.
 - **Descargas por SHA**: El instalador resuelve el commit actual de `master` y descarga desde ese SHA para evitar contenido stale en `raw.githubusercontent.com`.
 - **Instalación cache-busted**: El instalador y el comando `update` evitan caché stale de `raw.githubusercontent.com` después de publicar una versión.
 - **Instalador no interactivo**: Evita warnings al instalar desde contenedores o shells sin TTY usable.
@@ -26,6 +27,7 @@
 - **Explorador de Archivos Visual**: Navega por los archivos de tu servidor con una interfaz visual SFTP gracias a la integración con `sshfs` y `Midnight Commander`. (No disponible en Termux).
 - **Copia de Archivos Segura**: Transfiere archivos y directorios con una sintaxis similar a `scp`.
 - **Túneles SSH Avanzados**: Crea túneles locales y reversos con un asistente guiado, ejecútalos en segundo plano y gestiónalos interactivamente.
+- **ProxyCommand compatible**: Usa `sshm proxy <alias> <spec>` para integrar túneles locales con herramientas como VS Code Remote SSH.
 - **Menú de Ajustes**: Configura la ubicación de tu archivo de conexiones directamente desde la interfaz.
 - **Instalación de Dependencias Automática**: El script detecta e instala las herramientas que necesita en una amplia gama de distribuciones.
 - **Auto-actualización**: El comando `update` busca la última versión en GitHub y se actualiza automáticamente.
