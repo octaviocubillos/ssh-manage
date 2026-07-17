@@ -198,6 +198,10 @@ main() {
         echo "Error: No se pudo descargar el script principal."; exit 1
     fi
 
+    if [[ -n "$PREFIX" ]]; then
+        sed -i "1s|^.*$|#!$PREFIX/bin/bash|" "$INSTALL_DIR/$MAIN_CMD"
+    fi
+
     chmod +x "$INSTALL_DIR/$MAIN_CMD"
     ln -sf "$INSTALL_DIR/$MAIN_CMD" "$INSTALL_DIR/$ALIAS_CMD"
     
