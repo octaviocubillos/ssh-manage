@@ -46,9 +46,16 @@ install_dependencies() {
         fi
     done
 
-    # Optional dependencies (don't fail if missing, but try to install)
-    if ! command -v "sshfs" &> /dev/null; then missing_deps+=("sshfs"); fi
-    if ! command -v "mc" &> /dev/null; then missing_deps+=("mc"); fi
+    if [[ -n "$PREFIX" ]]; then
+        if ! command -v "ssh" &> /dev/null; then missing_deps+=("openssh"); fi
+        if ! command -v "tput" &> /dev/null; then missing_deps+=("ncurses-utils"); fi
+    fi
+
+    # Optional browse dependencies are not installed on Termux because browse is unsupported there.
+    if [[ -z "$PREFIX" ]]; then
+        if ! command -v "sshfs" &> /dev/null; then missing_deps+=("sshfs"); fi
+        if ! command -v "mc" &> /dev/null; then missing_deps+=("mc"); fi
+    fi
 
     if [ ${#missing_deps[@]} -eq 0 ]; then
         echo "Todas las dependencias están instaladas."
@@ -134,7 +141,9 @@ main() {
         original_user=$(whoami)
     fi
 
-    user_home=$(getent passwd "$original_user" | cut -d: -f6)
+    if command -v getent >/dev/null 2>&1; then
+        user_home=$(getent passwd "$original_user" | cut -d: -f6)
+    fi
     if [ -z "$user_home" ]; then
         user_home="$HOME"
     fi

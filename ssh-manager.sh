@@ -12,7 +12,7 @@
 
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-VERSION="1.0.16"
+VERSION="1.0.17"
 REPO_BASE_URL="https://raw.githubusercontent.com/octaviocubillos/ssh-manage/master"
 
 IS_TERMUX=false
@@ -1122,13 +1122,13 @@ stop_tunnel() {
 }
 
 browse_sftp() {
-    ensure_dependency "mc" || return 1
-    ensure_dependency "sshfs" || return 1
-    
     if $IS_TERMUX; then
         echo "Error: La función 'browse' no está disponible en Termux."
         return 1
     fi
+
+    ensure_dependency "mc" || return 1
+    ensure_dependency "sshfs" || return 1
     
     # ... (lógica de fuse checks omitida por brevedad)
     
